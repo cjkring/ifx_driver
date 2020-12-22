@@ -1,3 +1,0 @@
-/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/build/CMakeFiles/rebuild_cache.dir
-/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/build/CMakeFiles/edit_cache.dir
-/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/build/CMakeFiles/test_app.dir

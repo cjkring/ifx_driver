@@ -1,1 +1,0 @@
-/bin/gcc-9 -g  -rdynamic CMakeFiles/test_app.dir/test_app.o  -o test_app  -lComLib_C_Interface -lm 

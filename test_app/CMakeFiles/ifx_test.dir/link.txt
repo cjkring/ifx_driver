@@ -1,1 +1,0 @@
-/usr/bin/cc    CMakeFiles/ifx_test.dir/ifx_test.c.o  -o ifx_test  ../ComLib_C_Interface/libComLib_C_Interface.a -lm 
