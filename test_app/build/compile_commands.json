@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/build",
+  "command": "/bin/gcc-9  -I/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/ComLib_C_Interface/include  -g   -o CMakeFiles/test_app.dir/test_app.o   -c /home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/test_app.c",
+  "file": "/home/cjkring/whome/OneDrive/Documents/Projects/ifx_radar/test_app/test_app.c"
+}
+]

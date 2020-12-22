@@ -1,0 +1,1 @@
+/usr/bin/cc    CMakeFiles/test_app.dir/test_app.c.o  -o test_app  ../ComLib_C_Interface/libComLib_C_Interface.a -lm 
