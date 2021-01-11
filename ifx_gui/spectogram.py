@@ -27,7 +27,7 @@ from io_thread import io_thread_impl
 #overlap = 1000#512 #overlap value for spectrogram
 #rate = mic_read.RATE #sampling rate
 frequency_step = 1
-frequency_count = 512
+frequency_count = 256
 bin_count = 200
 
 

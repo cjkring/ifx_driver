@@ -12,7 +12,7 @@ from struct import unpack
 import numpy as np
 
 
-samples_per_packet = 512
+samples_per_packet = 256
 #seek in data for DEADBEEF, then get 12 bytes of data after that.  Data can 
 #spread across multiple data packets.
 def marshall(queue,data):
@@ -72,7 +72,6 @@ def parse_data(queue,packet, loc):
     reading_array = np.empty(samples_per_packet, dtype=complex)
 
     (seqno, count) = unpack( '!II', packet[0:8] )
-    print(seqno,',',count)
     if( seqno > parse_data.prev_seqno + 1 ):
         print("Corrupt data: ", packet)
     parse_data.prev_seqno = seqno
@@ -89,6 +88,7 @@ def parse_data(queue,packet, loc):
         reading_array[j] = complex(I,Q)
         #reading_array[j] = I
         #print(reading)
+    print(seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
     queue.put(reading_array)
         
            
@@ -105,7 +105,7 @@ def io_thread_impl(queue):
 
         # Create a TCP/IP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tcp_addr = '172.29.118.22'
+        tcp_addr = '172.24.80.1'
         tcp_port = 8080
         
 

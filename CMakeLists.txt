@@ -1,5 +1,7 @@
 cmake_minimum_required( VERSION 3.10 )
 
+set(CMAKE_BUILD_TYPE Debug)
+
 #set project name
 project(ifx_driver VERSION 0.1.0 LANGUAGES C )
 
@@ -31,8 +33,8 @@ message( STATUS "CMAKE_PROJECT_NAME is " ${CMAKE_PROJECT_NAME} )
 
 
 #executables
-#add_subdirectory(driver_app)
-add_subdirectory(test_app)
+add_subdirectory(driver_app)
+#add_subdirectory(test_app)
 
 #ifx Comm Library
 add_subdirectory(ComLib_C_Interface)
