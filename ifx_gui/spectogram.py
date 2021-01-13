@@ -59,7 +59,11 @@ def update_fig(n,im,im_data,q):
         return
     
     fft_out = fft(packet)
-    fft_prep = np.abs(fft_out)
+    fft_prep = np.square(np.square( np.abs(fft_out) + 1 ))
+    tmp3 = ( frequency_count // 2 ) + 1
+    tmp2 = fft_prep[1:tmp3]
+    tmp1 = fft_prep[tmp3:1:-1]
+    fft_final = np.append(tmp1,tmp2)
 
     # for visualization, only l
 
@@ -67,7 +71,7 @@ def update_fig(n,im,im_data,q):
     # this is performed by shifting the columns along the x axis then adding a column
     for i in range(bin_count - 1 ):
         im_data[i] = im_data[i+1]
-    im_data[bin_count - 1] = fft_prep
+    im_data[bin_count - 1] = fft_final
 
     im.set_array(im_data.transpose())
     return im
@@ -79,9 +83,9 @@ def spectogram_thread_impl(q):
     fig = plt.figure()
     im_data = np.zeros(( bin_count, frequency_count))
    
-    extent = (0,bin_count,0,frequency_count*frequency_step)
+    extent = (0,bin_count,-frequency_count/2,frequency_count/2)
     im = plt.imshow(im_data.transpose(),aspect='auto',extent = extent,interpolation="none", origin='lower',
-                    cmap = 'jet',norm = LogNorm(vmin=.01,vmax=1))
+                    cmap = 'jet',norm = LogNorm(vmin=.2,vmax=4.0))
     plt.xlabel('Time (s)')
     plt.ylabel('Frequency (Hz)')
     plt.title('Real Time Spectogram')

@@ -18,7 +18,7 @@ import cmath
 import threading
 from io_thread import io_thread_impl
 
-numpoints = 512
+numpoints = 256
 offsets = np.zeros((numpoints,2))
 def iqplot_update_fig(n,  q, scat):
 
@@ -77,8 +77,8 @@ def iqplot_thread_impl(q):
 
     ax1 = fig.add_subplot(111)
     scat = ax1.scatter(offsets[:,0], offsets[:,1], c=colors, cmap='plasma', alpha=0.75)
-    ax1.set_xlim(-5,5)
-    ax1.set_ylim(-5,5)
+    ax1.set_xlim(0.4,0.6)
+    ax1.set_ylim(0.4,0.6)
     ax1.set_xlabel('I')
     ax1.set_ylabel('Q')
     ax1.set_title('I/Q Readings')

@@ -105,7 +105,7 @@ def io_thread_impl(queue):
 
         # Create a TCP/IP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tcp_addr = '172.24.80.1'
+        tcp_addr = '192.168.86.29'
         tcp_port = 8080
         
 
