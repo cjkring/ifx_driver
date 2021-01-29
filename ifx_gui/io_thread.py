@@ -10,16 +10,17 @@ import time
 import socket
 from struct import unpack
 import numpy as np
+import rd_store
 
 
 samples_per_packet = 256
 #seek in data for DEADBEEF, then get 12 bytes of data after that.  Data can 
 #spread across multiple data packets.
-def marshall(queue,data):
+def marshall(readings,data):
     
 
     
-    packet_len = samples_per_packet * 8 + 8 # has to match driver, include seqno and count
+    packet_len = samples_per_packet * 4 + 4 # has to match driver, include seqno and count
     i = 0;
     
     length = len(data)
@@ -29,7 +30,7 @@ def marshall(queue,data):
         if(len(marshall.last) + len(data) >= packet_len):  
             # sufficient data - concat and parse
             i = packet_len - len(marshall.last)
-            parse_data(queue,marshall.last + data[:i],1)
+            parse_data(readings,marshall.last + data[:i],1)
             marshall.last = b''
         else:
             #insuffient data to parse,  add to last and keep going
@@ -46,7 +47,7 @@ def marshall(queue,data):
         if(data[i:i+4] == b'\xde\xad\xbe\xef'):
             marshall.looking = 1
             i = i + 4;
-           # print('i=',i,',len=',length)
+            #print('i=',i,',len=',length)
             if i == length:
                 #end of buffer
                 #print("resetting marshall.last")
@@ -58,47 +59,83 @@ def marshall(queue,data):
                 marshall.last =  data[i:]
                 return
             else:
-                parse_data(queue,data[i:i+packet_len],2);
+                parse_data(readings,data[i:i+packet_len],2);
                 i = i + packet_len;
                 marshall.looking = 0
             
         else:
             i = i + 1;
 
-def parse_data(queue,packet, loc):       
+def parse_data(readings,packet, loc):       
 
     #print("parsing: ",loc,',', list(packet))
+    global avg_count
+    global sum_i
+    global sum_q
 
     reading_array = np.empty(samples_per_packet, dtype=complex)
 
-    (seqno, count) = unpack( '!II', packet[0:8] )
-    if( seqno > parse_data.prev_seqno + 1 ):
-        print("Corrupt data: ", packet)
-    parse_data.prev_seqno = seqno
-    for j in range( count ):
-        idx = 8 + 8 * j
-        (i,q) = unpack( '!II', packet[idx:idx+8] )
+    try:
+        (seqno, count) = unpack( '!HH', packet[0:4] )
+        parse_data.prev_seqno = seqno
+        #reading_array = np.empty(count, dtype=complex)
+        for j in range( count ):
+            idx = 4 + 4 * j
+            (I,Q) = unpack( '!HH', packet[idx:idx+4] )
+            if parse_data.avg_count < 1000:
+                parse_data.sum_i += I
+                parse_data.sum_q += Q
+                parse_data.avg_count += 1
+                parse_data.avg_i = int(parse_data.sum_i / parse_data.avg_count)
+                parse_data.avg_q = int(parse_data.sum_q / parse_data.avg_count)
+            I = int(I - parse_data.avg_i)
+            Q = int(Q - parse_data.avg_q)
 
-        I = (i - 100000 )/ 1000.0 ;
-        Q = (q - 100000 )/ 1000.0 ;
-        
-        #print(count,',',I,',',Q)
-    
-        #reading = complex(I,Q)
-        reading_array[j] = complex(I,Q)
-        #reading_array[j] = I
-        #print(reading)
-    print(seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
-    queue.put(reading_array)
+            reading_array[j] = complex(I,Q)
+            #print(reading)
+        #print(loc,',',seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
+        readings.put(rd_store.Reading(seqno,count,reading_array))
+        #queue.put(reading_array)
+    except Exception as e:
+        print(f'parsing exception: dropping packet after {seqno}:{e}')
+        return;
+
+parse_data.avg_count = 0
+parse_data.sum_i = 0
+parse_data.sum_q = 0
+parse_data.avg_i = 0
+parse_data.avg_q = 0
         
            
-                
+import serial
 marshall.looking = 0
 marshall.last = b''
 parse_data.prev_seqno = 0
-            
-            
 def io_thread_impl(queue):
+    logging.warning("IO Thread started")
+
+    while True:
+
+        ser = serial.Serial('COM18', 128000, timeout=1)
+
+        #Look for the response
+        while 1:
+            try:
+                data = ser.read(1024)
+            except:
+                print('closing serial port')
+                ser.close()
+                break
+            length = len(data)
+            #print("recv", length, ": ", list(data))
+            if(length > 0):         
+                marshall(queue,data)
+                time.sleep(0.001)
+            
+    logging.warning("IO Thread ended")
+            
+            
+def io_thread_socket_impl(readings):
     logging.warning("IO Thread started")
 
     while True:
@@ -132,7 +169,7 @@ def io_thread_impl(queue):
             length = len(data)
             #print("recv", length, ": ", list(data))
             if(length > 0):         
-                marshall(queue,data)
+                marshall(readings,data)
                 time.sleep(0.001)
             else:
                 sock.close()

@@ -9,6 +9,7 @@ Created on Tue Dec  8 13:34:50 2020
 ############### Import Libraries ###############
 from matplotlib.mlab import window_hanning,specgram
 from numpy.fft import fft
+from numpy import hanning
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.colors import LogNorm
@@ -27,7 +28,7 @@ from io_thread import io_thread_impl
 #overlap = 1000#512 #overlap value for spectrogram
 #rate = mic_read.RATE #sampling rate
 frequency_step = 1
-frequency_count = 256
+frequency_count = 128
 bin_count = 200
 
 
@@ -57,13 +58,15 @@ def update_fig(n,im,im_data,q):
         packet = q.get(block=False)   
     except queue.Empty:
         return
-    
-    fft_out = fft(packet)
-    fft_prep = np.square(np.square( np.abs(fft_out) + 1 ))
-    tmp3 = ( frequency_count // 2 ) + 1
-    tmp2 = fft_prep[1:tmp3]
-    tmp1 = fft_prep[tmp3:1:-1]
-    fft_final = np.append(tmp1,tmp2)
+    sample = packet * hanning(256)
+    fft_out = fft(sample)
+    fft_prep = np.abs(fft_out) / 500
+    #tmp3 = ( frequency_count // 2 ) + 1
+    #tmp2 = fft_prep[1:tmp3]
+    #tmp1 = , fft_prep[tmp3:1:-1]
+    #fft_final = np.append(tmp1,tmp2)
+    fft_final = fft_prep[1:frequency_count+1] + fft_prep[:-frequency_count-1:-1]
+    print(f'fft_final min={fft_final.min()}, max = {fft_final.max()}')
 
     # for visualization, only l
 
@@ -83,15 +86,15 @@ def spectogram_thread_impl(q):
     fig = plt.figure()
     im_data = np.zeros(( bin_count, frequency_count))
    
-    extent = (0,bin_count,-frequency_count/2,frequency_count/2)
+    extent = (0,bin_count,0,frequency_count)
     im = plt.imshow(im_data.transpose(),aspect='auto',extent = extent,interpolation="none", origin='lower',
-                    cmap = 'jet',norm = LogNorm(vmin=.2,vmax=4.0))
+                    cmap = 'jet',norm = LogNorm(vmin=.5,vmax=500))
     plt.xlabel('Time (s)')
     plt.ylabel('Frequency (Hz)')
     plt.title('Real Time Spectogram')
 
     # animation
-    anim = animation.FuncAnimation(fig,update_fig,fargs=(im,im_data,q), blit = False, interval=200)
+    anim = animation.FuncAnimation(fig,update_fig,fargs=(im,im_data,q), blit = False, interval=100)
                                 
     try:
         plt.show()
