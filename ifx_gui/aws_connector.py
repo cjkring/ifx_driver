@@ -2,8 +2,8 @@ import logging
 import boto3
 from botocore.exceptions import ClientError
 
-keyId ='AKIAIDJGOCSLSCWMRH3A'
-key = 'yRHRn5+nkACxQ7P8Lx0yTwY3N4pZahW5YM4adL3x'
+keyId =''
+key = ''
 bucket_name = 'kring-bucket-test'
 
 def upload_file(file_name, bucket, object_name=None):

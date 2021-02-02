@@ -1,43 +1,62 @@
+import easygui
+
 class ButtonPress(object):
 
     def __init__(self):
         self.indexFn = self.live_impl
+        self.interval = 100
 
     # button press event handlers
     # the if logic in the button handlers makes it so if you click again on a button things stop
 
     def ff_prev(self, event):
+        self.interval = 100
         if self.indexFn == self.ff_prev_impl:
             self.indexFn = self.stop_impl
         else:
             self.indexFn = self.ff_prev_impl
 
     def prev(self, event):
+        self.interval = 200
         if self.indexFn == self.prev_impl:
             self.indexFn = self.stop_impl
         else:
             self.indexFn = self.prev_impl
 
     def stop(self, event):
+        self.interval = 200
         self.indexFn = self.stop_impl
 
     def next(self, event):
+        self.interval = 200
         if self.indexFn == self.next_impl:
             self.indexFn = self.stop_impl
         else:
             self.indexFn = self.next_impl
 
     def ff_next(self, event):
+        self.interval = 100
         if self.indexFn == self.ff_next_impl:
             self.indexFn = self.stop_impl
         else:
             self.indexFn = self.ff_next_impl
 
     def live(self, event):
+        self.interval = 100
         if self.indexFn == self.live_impl:
             self.indexFn = self.stop_impl
         else:
             self.indexFn = self.live_impl
+
+    def load(self,event):
+        file = easygui.fileopenbox()
+        if file != None:
+            print(f"load {file}")
+
+    def save(self,event):
+        file = easygui.filesavebox()
+        if file != None:
+            print(f"save {file}")
 
     # implementation of the index business logic
 

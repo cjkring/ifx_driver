@@ -39,7 +39,7 @@ print(res)
 
 import json
 
-# Create a get function.
+# Get function.
 
 def GET(url, headers={}):
 
@@ -51,13 +51,14 @@ def GET(url, headers={}):
       't':t,
       'sign_method':'HMAC-SHA256',  
       }
+  print(default_par)
   r = requests.get(base + url, headers=dict(default_par,**headers))
 
   r = json.dumps(r.json(), indent=2, ensure_ascii=False) # Beautify the request result format for easy printing and viewing
   return r
 
 
-# Create a post function.
+# Post function.
 
 def POST(url, headers={}, body={}):
   import json
@@ -75,52 +76,197 @@ def POST(url, headers={}, body={}):
   r = json.dumps(r.json(), indent=2, ensure_ascii=False) # Beautify the request result format for easy printing and viewing
   return r
 
+def calc_dist_value( distance, min, max):
+    if distance < min:
+        ratio =  1.0
+    elif distance > max:
+        ratio =  0.0
+    else:
+        ratio =  (( 1 - (( distance - min )/( max - min ))) // 0.2) * 0.2
 
-'''
---- Two-way control practice of smart devices ----
-'''
+    #print( min,",",max,",",distance,",",ratio)
+    return ratio
 
-# The ID of the associated device in the Cloud Development project.
+# base device class
+class tuya_device():
 
-device_id = '54011042840d8eaf0ee0'
-device_id = '3616144040f520097344'
+  device_id = 0
 
-# Get the latest status of the device.
+  def __init__(self, device_id):
+     self.device_id = device_id
 
-r = GET(url=f'/v1.0/devices/{device_id}/status')
-print(r)
+  def on(self):
+      print("Not implemented")
 
-# Get control instruction set.
+  def off(self):
+      print("Not implemented")
 
-r = GET(url=f'/v1.0/devices/{device_id}/functions')
-print(r)
+  def brightness(self):
+      print("Not implemented")
 
-# Issue control commands.
+  def status(self):
+      r = GET(url=f'/v1.0/devices/{self.device_id}/status')
+      print(r)
 
-d = {"commands":[{"code":"switch_led","value":True},]}
+  def functions(self):
+      r = GET(url=f'/v1.0/devices/{self.device_id}/functions')
+      print(r)
 
-r = POST(url=f'/v1.0/devices/{device_id}/commands', body=d)
-print(r)
+          
 
-# Continuous control.
+# bulb-specific class
+class tuya_bulb(tuya_device):
 
-def turn_on_off(s):
-  d = {"commands":[{"code":"switch_led","value":s},]}
-  print(d)
-  r = POST(url=f'/v1.0/devices/{device_id}/commands', body=d)
-  print(r)
+  def __init__(self, device_id, on_max=2, on_min=1, off_max=3, off_min=2):
+      self.on_off_state = -1
+      self.dist_state = 0
+      self.on_max = on_max
+      self.on_min = on_min
+      self.off_max = off_max
+      self.off_min = off_min
+      super().__init__(device_id)
 
-#group
+  def registerTagDist( self, distance ):
+    
+      on_value = calc_dist_value( distance, self.on_min, self.on_max)
+      off_value = calc_dist_value( distance, self.off_min, self.off_max)
+      if on_value > self.dist_state:
+          self.dist_state = on_value
+          self.brightness(int(self.dist_state * 100))
+          self.on()
+          print( distance,",",self.on_off_state,",",self.dist_state * 100)
+      elif off_value < self.dist_state:
+          self.dist_state = off_value
+          self.brightness(int(self.dist_state * 100))
+          self.off()
+          print( distance,",",self.on_off_state,",",self.dist_state * 100)
 
-r = GET(url=f'/v1.0/device-groups')
-r = GET(url=f'/v1.0/homes')
-print(r)
+  def on(self):
+      if self.on_off_state == 1:
+          return
+      self.on_off_state = 1
+      d = {"commands":[{"code":"switch_led","value":True},]}
+      r = POST(url=f'/v1.0/devices/{self.device_id}/commands', body=d)
+      print(r)
 
-delay = 0.5
+  def off(self):
+      if self.on_off_state == 0:
+          return
+      self.on_off_state = 0
+      d = {"commands":[{"code":"switch_led","value":False},]}
+      r = POST(url=f'/v1.0/devices/{self.device_id}/commands', body=d)
+      print(r)
 
+  def brightness(self,value):
+      print("brightness:", value)
+      d = {"commands":[{"code":"bright_value","value":value},]}
+      r = POST(url=f'/v1.0/devices/{self.device_id}/commands', body=d)
+      print(r)
 
-for i in range(1):
-  turn_on_off(True)
-  time.sleep(delay)
-  turn_on_off(False)
-  #time.sleep(delay)
+#device-groups -- need to test
+
+# r = GET(url=f'/v1.0/device-groups')
+# r = GET(url=f'/v1.0/homes')
+# print(r)
+
+# testing
+
+# import array
+# bulbs = array.array('o',[ tuya_bulb('3616144040f520097344'),
+#                         tuya_bulb('3616144040f5200a1fd1'),
+#                         tuya_bulb('3616144040f52011edbd'),
+#                         tuya_bulb('3616144010521c47418b'),
+#                         tuya_bulb('3616144040f52009b8c0'),
+#                         tuya_bulb('3616144040f52009be4c'),
+#                         tuya_bulb('3616144040f52012759d'),
+#                         tuya_bulb('3616144010521c472a9e'),
+#                         tuya_bulb('3616144040f52012d547'),
+#                         tuya_bulb('3616144040f52013580e'),
+#                         tuya_bulb('3616144040f52012ede4'),
+#                         tuya_bulb('3616144010521c4718db'),
+#                         tuya_bulb('36k16144040f5200a4f4b'),
+#                         tuya_bulb('3616144040f5200e651e'),
+#                         tuya_bulb('3616144040f5200e674a')])
+
+# for bulb in bulbs:
+#     bulb.on()
+#     time.sleep(0.5)
+#     bulb.off()
+#     time.sleep(0.5)
+bulb1 = tuya_bulb('3616144040f520097344')
+bulb1.status()
+#bulb2 = tuya_bulb('3616144040f5200a1fd1')
+#bulb3 = tuya_bulb('3616144040f52011edbd')
+#bulb = rgbcw4 = tuya_bulb('3616144010521c47418b')
+#bulb = rgbcw5 = tuya_bulb('3616144040f52009b8c0')
+#bulb = rgbcw6 = tuya_bulb('3616144040f52009be4c')
+#bulb = rgbcw7 = tuya_bulb('3616144040f52012759d')
+#bulb = rgbcw8 = tuya_bulb('3616144010521c472a9e')
+#bulb = rgbcw9 = tuya_bulb('3616144040f52012d547')
+#bulb = rgbcw10 = tuya_bulb('3616144040f52013580e')
+#bulb = rgbcw11 = tuya_bulb('3616144040f52012ede4')
+#bulb = rgbcw12 = tuya_bulb('3616144010521c4718db')
+#bulb = rgbcw13 = tuya_bulb('36k16144040f5200a4f4b')
+#bulb = rgbcw14 = tuya_bulb('3616144040f5200e651e')
+#bulb = rgbcw15 = tuya_bulb('3616144040f5200e674a')
+#bulb.on()
+#time.sleep(0.5)
+#bulb.off()
+#time.sleep(0.5)
+#bulb.on()
+#time.sleep(0.5)
+#bulb.off()
+
+#bulb1.off()
+#import numpy as np
+#
+#for dist in np.arange(20.0,1.0,-0.1):
+#    bulb1.registerTagDist(dist)
+#    time.sleep(0.1)
+#for dist in np.arange(1.0,20.0,0.1):
+#    bulb1.registerTagDist(dist)
+#    time.sleep(0.1)
+# bulb3.off()
+# time.sleep(1)
+# bulb3.on()
+# time.sleep(1)
+# bulb3.off()
+# time.sleep(1)
+# bulb3.on()
+# bulb1.status()
+# bulb1.functions()
+# time.sleep(1.0)
+# bulb1.on()
+# time.sleep(1.0)
+# bulb1.off()
+# bulb2.off()
+# bulb3.off()
+# time.sleep(1.0)
+# bulb1.on()
+# bulb2.on()
+# bulb3.on()
+# time.sleep(1.0)
+# bulb1.off()
+# bulb2.off()
+# bulb3.off()
+# time.sleep(1.0)
+# bulb1.on()
+# bulb2.on()
+# bulb3.on()
+# bulb1.brightness(30)
+# bulb1.brightness(50)
+# bulb1.brightness(70)
+# bulb1.brightness(90)
+# bulb1.brightness(110)
+# bulb1.brightness(130)
+# bulb1.brightness(200)
+# bulb1.brightness(255)
+# bulb2.brightness(30)
+# bulb2.brightness(90)
+# bulb2.brightness(30)
+# bulb2.brightness(30)
+# bulb2.brightness(90)
+# bulb2.brightness(255)
+# bulb1.off()
+# bulb2.off()
+# bulb3.off()
