@@ -33,8 +33,8 @@ message( STATUS "CMAKE_PROJECT_NAME is " ${CMAKE_PROJECT_NAME} )
 
 
 #executables
-add_subdirectory(driver_app)
-#add_subdirectory(test_app)
+#add_subdirectory(driver_app)
+add_subdirectory(test_app)
 
 #ifx Comm Library
 add_subdirectory(ComLib_C_Interface)

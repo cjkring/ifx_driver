@@ -12,6 +12,7 @@ import matplotlib.animation as animation
 import numpy as np
 import logging
 import time
+from datetime import datetime
 import math
 import cmath
 import threading
@@ -35,13 +36,17 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
 
     idx = buttons.indexFn(iqplot_update_fig.lastReading,readings)
-    anim.event_source.interval = buttons.interval
+
+    # mechanism for initial forward / reverse to go slow then to speed up
+
+    anim.event_source.interval = buttons.get_interval()
     if idx == iqplot_update_fig.lastReading:
         return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno
     try:
         iqplot_update_fig.lastReading = idx
         reading = readings.get(iqplot_update_fig.lastReading)
-        seqno.set_text(f'timestamp: {reading.timestamp}\n\nseqno: {reading.seqno}\n\nannotation: {reading.annotation.value}')
+        date_time = datetime.fromtimestamp(reading.timestamp)
+        seqno.set_text(f'time: {date_time}\nseqno: {reading.seqno}\nannotation: {reading.annotation.value}')
         #seqno.set_val(reading.seqno)
         #timestamp.set_val(reading.timestamp)
         packet = reading.data
@@ -109,7 +114,7 @@ def iqplot_thread_impl(q):
 
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
-    fig.set_size_inches(6,3)
+    fig.set_size_inches(12,7)
     fig.subplots_adjust(bottom=0.2)
 
     bleft = 0.3
@@ -179,10 +184,9 @@ def iqplot_thread_impl(q):
     ax6 = fig.add_subplot(233)
     ax6.axis('off')
 
-    foo = list(Annotations)
     labels = [anno.value for anno in Annotations]
     states = RadioButtons(ax6.inset_axes([0.0,0,1.0,0.7]),labels)
-    seqno = ax6.text(0.0, 0.8, "timestamp:\n\nseqno:\nannotation:", fontsize=12)
+    seqno = ax6.text(0.0, 0.8, "time:\nseqno:\nannotation:", fontsize=10)
 
     global anim
     anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,states,seqno),interval=100, blit=True)

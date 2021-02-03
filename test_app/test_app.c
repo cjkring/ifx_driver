@@ -14,7 +14,7 @@ typedef struct reading {
     uint32_t I;
     uint32_t Q;
 } reading;
-#define SAMPLES_PER_PACKET  512
+#define SAMPLES_PER_PACKET  256
 
 #define PORT 8080 
 int main(int argc, char const *argv[]) 
@@ -28,6 +28,7 @@ int main(int argc, char const *argv[])
   
 
     double scale = 2;
+
 
     if( argc > 1 ){
         scale = atof(argv[1]);
@@ -44,8 +45,12 @@ int main(int argc, char const *argv[])
     } 
        
     // Forcefully attaching socket to the port 8080 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
-                                                  &opt, sizeof(opt))) { 
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) { 
+        perror("setsockopt failed"); 
+        exit(EXIT_FAILURE); 
+    } 
+    // Forcefully attaching socket to the port 8080 
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) { 
         perror("setsockopt failed"); 
         exit(EXIT_FAILURE); 
     } 
