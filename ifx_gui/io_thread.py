@@ -72,7 +72,8 @@ def parse_data(readings,packet, loc):
 
     #print("parsing: ",loc,',', list(packet))
 
-    reading_array = np.empty(samples_per_packet, dtype=complex)
+    data_i = np.empty(samples_per_packet, dtype=np.int16)
+    data_q = np.empty(samples_per_packet, dtype=np.int16)
 
     try:
         (seqno, count) = unpack( '!HH', packet[0:4] )
@@ -89,16 +90,15 @@ def parse_data(readings,packet, loc):
                 parse_data.avg_count += 1
                 parse_data.avg_i = int(parse_data.sum_i / parse_data.avg_count)
                 parse_data.avg_q = int(parse_data.sum_q / parse_data.avg_count)
-            I = int(I - parse_data.avg_i)
-            Q = int(Q - parse_data.avg_q)
+            data_i[j] = int(I - parse_data.avg_i)
+            data_q[j] = int(Q - parse_data.avg_q)
 
-            reading_array[j] = complex(I,Q)
             #print(reading)
         #print(loc,',',seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
-        readings.put(rd_store.Reading(seqno,count,reading_array))
+        readings.put(rd_store.Reading(seqno,count,data_i,data_q))
     except Exception as e:
         print(f'parsing exception: dropping packet after {seqno}:{e}')
-        return;
+        return
 
 parse_data.avg_count = 0
 parse_data.sum_i = 0
