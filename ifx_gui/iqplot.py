@@ -24,20 +24,22 @@ import cmath
 import threading
 from io_thread import io_thread_impl
 from backup_thread import backup_thread_impl
-import bottleneck as bn
 from matplotlib.widgets import Button, RadioButtons, TextBox, Slider
 import rd_store
 import button_press
 from annotations import Annotations
 from avro_export import avroImport, avroExport
+from frame_process import frame_phase_velocity, frame_unroll_phases, frame_rgba, calc_window
 numpoints = 256
+video_frames = 50
 anim = None
 
 root = Tk()
 root.withdraw
 
 
-def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno):
+
+def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video):
 
     # points come in FIFO order but we want to newest a the top of the array.
     # reading points into the array, then reversing the array and adding points from the 
@@ -58,9 +60,13 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         # no new readings
         # TODO: don't return the entire list of artists
         time.sleep(0.01)
-        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno
+        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video
     try:
-        #frame.set_val(idx)
+        
+        # the transparency of the current frame is 255, other frames are lower
+        if iqplot_update_fig.lastReading >= 0:
+            readings.rgba[0,iqplot_update_fig.lastReading,3] = 0
+
         iqplot_update_fig.lastReading = idx
         reading = readings.get(iqplot_update_fig.lastReading)
 
@@ -70,9 +76,6 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
         date_time = datetime.fromtimestamp(reading['timestamp'])
         seqno.set_text(f'frame: {idx}\ntime: {date_time}\nseqno: {reading["seqno"]}\nannotation: {reading["annotation"].value}')
-        #seqno.set_val(reading.seqno)
-        #timestamp.set_val(reading.timestamp)
-        #packet = np.complex(reading["data_i"],reading["data_q"])
         packet = reading["data_i"] + reading["data_q"] * 1j
         #print(f'{reading["seqno"]},{reading["count"]},{packet[0]},{packet[-1]}')
 
@@ -85,50 +88,22 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
         #phase plot
         phases = np.angle(packet)
+        phase_plot.set_ydata(phases)
 
-        average = np.copy(phases)
-        phase_plot.set_ydata(average)
+        phases_unrolled,rollover_count = frame_unroll_phases(phases)
+        phase_velocity = frame_phase_velocity(phases_unrolled)
 
-        offset = 0
-        last_v = 0
-        threshold = np.pi * 0.8
-        for i in range(len(phases)):
-            v = phases[i]
-            #print(f"offset = {offset}, v={v}. last_v = {last_v}")
-            if v > threshold and last_v < -threshold:
-                # negative rollover
-                offset -= np.pi * 2
-            elif v < -threshold and last_v > threshold:
-                # negative rollover
-                offset += np.pi * 2
-            last_v = v
-            phases[i] = v + offset
+        unrolled_plot.set_ydata(phases_unrolled)
+        velocity_plot.set_ydata(phase_velocity)
 
-        unrolled_plot.set_ydata(phases)
+        # video (only updates if necessary)
+        frame_rgba(readings, idx, magnitudes,phases,phases_unrolled,phase_velocity,rollover_count)
 
-        #phase velocity
-        tmp1 = phases[:-1]
-        tmp2 = phases[1:]
-        velocity = np.subtract(tmp2,tmp1)
-        pi_2 = np.pi / 2
-        #velocity = np.subtract(phases[:-1], phases[1:])
-        with np.nditer(velocity, op_flags=['readwrite']) as it:
-            for v in it:
-                if v < -pi_2:
-                    tmp = v + np.pi
-                    while tmp < -pi_2:
-                        tmp += np.pi
-                    v[...] = tmp
-                elif v > pi_2:
-                    tmp = v - np.pi
-                    while tmp > pi_2:
-                        tmp -= np.pi
-                    v[...] = tmp
-        tmp = bn.move_mean( velocity, window=5, min_count=1 )
-        velocity_plot.set_ydata(tmp)
+        # setting range for video
+        (idx_min,idx_max) = calc_window(idx,video_frames,readings)
+        video.set_array(readings.rgba[:,idx_min:idx_max,:])
 
-
-        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno
+        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video
     except Exception as e:
         print(f'Unexpected error: {e}')
         return []
@@ -139,7 +114,7 @@ def iqplot_thread_impl(q):
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
     fig.set_size_inches(12,8)
-    fig.subplots_adjust(bottom=0.2)
+    fig.subplots_adjust(bottom=0.3)
 
     bleft = 0.36
     bwidth = 0.05
@@ -226,6 +201,11 @@ def iqplot_thread_impl(q):
     bannotate.set_active(0)
     buttons.annotateButton = bannotate
 
+    ax8 = plt.axes([0.15,0.18, 0.7,0.05])
+    ax8.axis('off')
+    #tmp = np.random.randint(0,255,(1,video_frames))
+    tmp = readings.rgba[:,0:video_frames,:]
+    video = ax8.imshow(tmp, vmin=0, vmax=255, aspect='auto')
 
     #seqno = ax6.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
     ax7 = plt.axes([0.11,-0.16, 0.2,0.3])
@@ -233,7 +213,7 @@ def iqplot_thread_impl(q):
     seqno = ax7.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
 
     global anim
-    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno),interval=100, blit=True)
+    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno,video),interval=100, blit=True)
     plt.show()
 
 iqplot_update_fig.lastReading = -2

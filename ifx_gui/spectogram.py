@@ -35,9 +35,9 @@ bin_count = 200
 
 ############### Functions ###############
 
-def get_sample(stream,pa):
-    data = mic_read.get_data(stream,pa)
-    return data
+# def get_sample(stream,pa):
+#     data = mic_read.get_data(stream,pa)
+#     return data
 
 #def get_specgram(q):
     # arr2D,freqs,bins = specgram(signal,window=window_hanning,

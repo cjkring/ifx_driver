@@ -1,5 +1,5 @@
 from fastavro import writer, schemaless_writer, reader, parse_schema
-import easygui
+#import easygui
 import rd_store
 import numpy as np
 

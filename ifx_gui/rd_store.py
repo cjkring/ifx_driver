@@ -4,9 +4,6 @@ import json
 import time
 from annotations import Annotations
 
-#reading_size = 2 * 60 * 60  # store one hour of data
-reading_size = 10000
-
 class Reading(dict):
 
     def __init__(self, seqno, count, data_i, data_q):
@@ -20,7 +17,15 @@ class Reading(dict):
 class Readings:
     def __init__(self):
         self.head = -1
-        self.readings = np.empty(reading_size, dtype=Reading)
+        self.size = 10000
+        self.readings = np.empty(self.size, dtype=Reading)
+        # row 0 is black, points to current frame
+        # row 1 is backwards / forwards
+        # row 2 is ???
+        self.rgba = np.zeros((3,self.size,4),dtype=np.int)
+        self.rgba[:,:,0:2] = 255
+        self.rgba[0,:,:] = 255
+        self.rgba[2,:,:] = 255
         self.pause = 0
     
     def __iter__(self):
