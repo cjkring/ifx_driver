@@ -18,3 +18,9 @@ conda activate ifx_gui
 
 python3 iqplot.py
 
+To update the environment
+-------------------------
+
+1) git pull
+
+2) conda update --name ifx_gui --file conda_env.txt

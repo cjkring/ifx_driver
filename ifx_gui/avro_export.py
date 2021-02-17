@@ -1,7 +1,8 @@
 from fastavro import writer, schemaless_writer, reader, parse_schema
-#import easygui
 import rd_store
 import numpy as np
+import os
+from config import read_config, validate_config
 
 schema = {
     'name': 'reading.Reading',
@@ -18,20 +19,24 @@ schema = {
 parsed_schema = parse_schema(schema)
 def avroExport(filename, readings):
     try:
-        with open(filename, 'wb') as f:
+        with open(fullpathname, 'wb') as f:
             # write the schema and headers with the first on
             writer(f, parsed_schema, readings)
     except Exception as e:
         print(f'AvroExport: {e}')
 
-def avroImport(filename):
+def avroImport(filename, readings):
     try:
-        readings = rd_store.Readings()
+        # reset readings,  the io_thread was stopped by the calling function
+        count = 0
+        readings.backup()
         with open(filename, 'rb') as f:
             for record in reader(f):
                 reading = rd_store.Reading( record["seqno"], record["count"], record["data_i"], record["data_q"])
                 reading["timestamp"] = record["timestamp"]
                 readings.put(reading)
+                count += 1
+        print(f'AvroImport: {count} readings inported')
     except Exception as e:
         print(f'AvroImport: {e}')
     return readings
@@ -63,15 +68,19 @@ def compareReadings(readings,new_readings):
     print('compareReadings: success')
 
 if  __name__ == "__main__":
+
+    config = read_config()
+    if validate_config(config) == False:
+        quit()
+
     readings = rd_store.Readings()
     for seqno in range(10000):
         reading = rd_store.Reading( seqno, 256, np.random.randint(-2500,2500,256), np.random.randint(-2500,2500,256))
         readings.put(reading)
-    #printReadings(readings)
 
-    avroExport('test.avro',readings)
+    fullpathname = os.path.join(config['app']['data'], 'test.avro')
+    avroExport(fullpathname, readings)
 
-    new_readings = avroImport('test.avro')
-    #printReadings(new_readings)
+    new_readings = avroImport(fullpathname,readings)
 
     compareReadings(readings, new_readings)

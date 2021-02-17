@@ -2,10 +2,11 @@
 from annotations import Annotations
 from tkinter.filedialog import askopenfilename, asksaveasfilename
 from avro_export import avroExport, avroImport
+from io_thread import io_thread_lock
 from time import time_ns
 class ButtonPress(object):
     def __init__(self):
-        self.indexFn = self.live_impl
+        self.indexFn = self.last_impl
         self.interval = 200
         self.frame_incr = 1
         self.last_update = 0
@@ -54,10 +55,12 @@ class ButtonPress(object):
         self.interval = 100000000
         self.toggle_speed(self.next_impl, 1, 10)
 
-    def live(self, event):
+    def last(self, event):
         self.setAnnotationsExisting()
+        #self.lastbutton.set_active(False) # breaks something
+        #self.lastbutton.label.set_text("foo") . # works
         self.interval = 100000000
-        self.toggle_impl(self.live_impl)
+        self.toggle_impl(self.last_impl)
 
     # turns annotations back to existing when a speed button is pressed
     def setAnnotationsExisting(self):
@@ -97,29 +100,23 @@ class ButtonPress(object):
 
         return next_idx
 
-    def live_impl(self,frame_idx,readings):
+    def last_impl(self,frame_idx,readings):
         return readings.head
 
-
-    # def load(self,event):
-    #     file = askopenfilename()
-    #     #file = easygui.fileopenbox()
-    #     if file != None:
-    #         print(f"load {file}")
-
-    # def save(self,event):
-    #     #file = askopenfilename()
-    #     if file != None:
-    #         print(f"save {file}")
-
-    def save(self,readings):
-        self.indexFn = self.stop_impl
+    def save(self,config,readings):
         filename = asksaveasfilename()
-        print(f'export: {filename}')
+        print(f'save: {filename}')
         avroExport(filename, readings)
+        io_thread_lock(False)
+        self.indexFn = self.last_impl
 
-    def load(self,readings):
+    def load(self,config,readings):
+        io_thread_lock(True)
         self.indexFn = self.stop_impl
-        filename = askopenfilename()
-        print(f'import: {filename}')
+        datadir = config['app']['data']
+        filename = askopenfilename(initialdir=datadir,filetypes = (("avro files","*.avro"),("all files","*.*")))
+        print(f'load: {filename}')
         avroImport(filename, readings)
+        self.interval = 10000000
+        self.frame_incr = 1
+        self.indexFn = self.next_impl

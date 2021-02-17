@@ -13,6 +13,8 @@ import numpy as np
 import rd_store
 import serial
 import serial.tools.list_ports
+from frame_process import process_frame
+import threading
 
 
 samples_per_packet = 256
@@ -95,7 +97,11 @@ def parse_data(readings,packet, loc):
 
             #print(reading)
         #print(loc,',',seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
-        readings.put(rd_store.Reading(seqno,count,data_i,data_q))
+
+        # has to be this order because process_frame requires the reading idx
+        reading = rd_store.Reading(seqno,count,data_i,data_q)
+        readings.put(reading)
+        process_frame(readings, readings.head, reading)
     except Exception as e:
         print(f'parsing exception: dropping packet after {seqno}:{e}')
         return
@@ -115,6 +121,7 @@ parse_data.prev_seqno = 0
 
 def io_thread_impl(queue):
     logging.warning("IO Thread started")
+    io_thread_impl.keep_running = True
 
     
     port = None
@@ -128,68 +135,87 @@ def io_thread_impl(queue):
         return
 
     while True:
+        if io_thread_impl.keep_running:
+            ser = serial.Serial(port.device, 128000, timeout=1)
 
-        ser = serial.Serial(port.device, 128000, timeout=1)
-
-        #Look for the response
-        while 1:
-            try:
-                data = ser.read(1024)
-            except:
-                print('closing serial port')
-                ser.close()
-                break
-            length = len(data)
-            #print("recv", length, ": ", list(data))
-            if(length > 0):         
-                marshall(queue,data)
-                time.sleep(0.001)
-            
+            #Look for the response
+            while io_thread_impl.keep_running:
+                try:
+                    data = ser.read(1024)
+                    length = len(data)
+                    #print("recv", length, ": ", list(data))
+                    if(length > 0):         
+                        marshall(queue,data)
+                        #time.sleep(0.001)
+                except:
+                    print('closing serial port')
+                    ser.close()
+        else:
+            time.sleep(1)
+                
     logging.warning("IO Thread ended")
+
+#keep_running = threading.Lock()
+
+def io_thread_lock(value):
+    if value == True:
+        io_thread_impl.keep_running = False
+        #keep_running.acquire()
+    else:
+        io_thread_impl.keep_running = True
+        #keep_running.release()
+            
             
  # this is unused.   It was abandoned after moving to the Sense2Go as that module 
  # does not support the IFX ComLib interface.  Rather the marshalling was pushed
  # into the Sense2Go M0 MCU and we are now getting data from the serial interface.
-            
+
 def io_thread_socket_impl(readings):
     logging.warning("IO Thread started")
 
-    while True:
+    keep_running = 1
 
-        # Create a TCP/IP socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tcp_addr = '192.168.86.29'
-        tcp_port = 8080
-        
 
-        # Connect the socket to the port where the server is listening
-        server_address = (tcp_addr, tcp_port)
-        print('connecting to {} port {}'.format(*server_address))
-        try:
-            sock.connect(server_address)
-        except socket.error:
-            print('error opening socket')
-            sock.close()
-            time.sleep(1)
-            continue
-    
 
-        #Look for the response
-        while 1:
-            try:
-                data = sock.recv(1024)
-            except socket.error:
-                print('closing socket')
-                sock.close()
-                break
-            length = len(data)
-            #print("recv", length, ": ", list(data))
-            if(length > 0):         
-                marshall(readings,data)
-                time.sleep(0.001)
-            else:
-                sock.close()
-                break
+    while 1:
+        while keep_running:
+
+            # Create a TCP/IP socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            tcp_addr = '192.168.86.29'
+            tcp_port = 8080
             
+
+            # Connect the socket to the port where the server is listening
+            server_address = (tcp_addr, tcp_port)
+            print('connecting to {} port {}'.format(*server_address))
+            try:
+                sock.connect(server_address)
+            except socket.error:
+                print('error opening socket')
+                sock.close()
+                time.sleep(0.5)
+                continue
+        
+    
+            #Look for the response
+            while keep_running:
+                try:
+                    data = sock.recv(1024)
+                except socket.error:
+                    print('closing socket')
+                    sock.close()
+                    break
+                length = len(data)
+                #print("recv", length, ": ", list(data))
+                if(length > 0):         
+                    marshall(readings,data)
+                    time.sleep(0.001)
+                else:
+                    sock.close()
+                    break
+    # sleep to keep from pegging the CPU if keep_running == False
+    time.sleep(0.1)
+                
     logging.warning("IO Thread ended")
     

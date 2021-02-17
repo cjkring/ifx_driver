@@ -1,0 +1,14 @@
+# fill this out and copy to config.yml
+# config.yml is ignored by git to preserve security of the AWS keys
+# data_dir: the location of the data files
+# sensor_id: added to the file names to differentiate sensors after data is exported to AWS
+
+ifx_gui:
+    sensor_id: 
+    data_dir: data
+aws:
+    region: us-west
+    key: 
+    key_id: 
+    bucket: plume_ai_programming
+    table: chi_agg_qoe_hourly

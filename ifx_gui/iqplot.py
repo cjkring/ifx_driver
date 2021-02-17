@@ -5,16 +5,18 @@ Created on Tue Dec  8 14:56:54 2020
 @author: cjkri
 """
 
-# from matplotlib.mlab import window_hanning,specgram
 from tkinter import Tk
-#from tkinter.ttk import Tk
+#from matplotlib.backends.backend_tkagg import (
+#    FigureCanvasTkAgg, NavigationToolbar2Tk)
+# Implement the default Matplotlib key bindings.
+#from matplotlib.backend_bases import key_press_handler
+
 import matplotlib
-#matplotlib.use('macosx') # dialog doesn't work
-#matplotlib.use('tkagg') #dialog works, very slow on retina
-#matplotlib.use('tkagg') #dialog works, very slow on retina
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-# from matplotlib.colors import LogNorm
+from matplotlib.figure import Figure
+from frame_process import process_frame
+
 import numpy as np
 import logging
 import time
@@ -29,15 +31,24 @@ import rd_store
 import button_press
 from annotations import Annotations
 from avro_export import avroImport, avroExport
-from frame_process import frame_phase_velocity, frame_unroll_phases, frame_rgba, calc_window
+from config import read_config
 numpoints = 256
 video_frames = 50
 anim = None
 
-root = Tk()
-root.withdraw
+# business logic for what rbga frames to show
+def calc_window(idx,window_size,readings):
+    
+    if idx < window_size:
+        return 0,window_size
 
+    idx_min = int(idx - window_size / 2)
+    idx_max = int(idx + window_size / 2)
 
+    if idx_max >= readings.head:
+        return readings.head - window_size,readings.head + 1
+
+    return idx_min,idx_max
 
 def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video):
 
@@ -51,21 +62,24 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         reading = readings.get(iqplot_update_fig.lastReading)
         reading['annotation'] = buttons.annotation
  
-    idx = buttons.indexFn(iqplot_update_fig.lastReading,readings)
-
-    # mechanism for forward / reverse to start slow then to speed up
-    #anim.event_source.interval = buttons.get_interval()
+    if iqplot_update_fig.lastReading == None or iqplot_update_fig.lastReading > readings.head:
+        # caused by Avro load
+        idx = 0
+    else:
+        idx = buttons.indexFn(iqplot_update_fig.lastReading,readings)
 
     if idx == iqplot_update_fig.lastReading or idx == -1:
         # no new readings
         # TODO: don't return the entire list of artists
-        time.sleep(0.01)
+        iqplot_update_fig.lastReading = idx
+        time.sleep(0.1)
         return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video
     try:
         
         # the transparency of the current frame is 255, other frames are lower
-        if iqplot_update_fig.lastReading >= 0:
+        if iqplot_update_fig.lastReading != None:
             readings.rgba[0,iqplot_update_fig.lastReading,3] = 0
+        readings.rgba[0,idx,3] = 100
 
         iqplot_update_fig.lastReading = idx
         reading = readings.get(iqplot_update_fig.lastReading)
@@ -76,28 +90,21 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
         date_time = datetime.fromtimestamp(reading['timestamp'])
         seqno.set_text(f'frame: {idx}\ntime: {date_time}\nseqno: {reading["seqno"]}\nannotation: {reading["annotation"].value}')
-        packet = reading["data_i"] + reading["data_q"] * 1j
         #print(f'{reading["seqno"]},{reading["count"]},{packet[0]},{packet[-1]}')
 
         #iq plot
         scat.set_offsets( np.column_stack((reading["data_i"],reading["data_q"])))
 
-        #phase plot
-        magnitudes = np.absolute(packet)
-        mag_plot.set_ydata(magnitudes)
+        if hasattr(reading, "magnitudes") == False:
+            process_frame(readings, idx, reading)
+     
+        #magnitude plot
+        mag_plot.set_ydata(reading.magnitudes)
 
-        #phase plot
-        phases = np.angle(packet)
-        phase_plot.set_ydata(phases)
-
-        phases_unrolled,rollover_count = frame_unroll_phases(phases)
-        phase_velocity = frame_phase_velocity(phases_unrolled)
-
-        unrolled_plot.set_ydata(phases_unrolled)
-        velocity_plot.set_ydata(phase_velocity)
-
-        # video (only updates if necessary)
-        frame_rgba(readings, idx, magnitudes,phases,phases_unrolled,phase_velocity,rollover_count)
+        #phase plots
+        phase_plot.set_ydata(reading.phases)
+        unrolled_plot.set_ydata(reading.phases_unrolled)
+        velocity_plot.set_ydata(reading.phase_velocity)
 
         # setting range for video
         (idx_min,idx_max) = calc_window(idx,video_frames,readings)
@@ -109,12 +116,16 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         return []
 
 
-def iqplot_thread_impl(q):
+def iqplot_thread_impl(readings,config):
 
+    # this produces a dangling root window but is needed for the filesaveas dialogs to work
+    Tk() 
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
     fig.set_size_inches(12,8)
     fig.subplots_adjust(bottom=0.3)
+
+    #canvas = FigureCanvasTkAgg(fig, master=root)  # A tk.DrawingArea.
 
     bleft = 0.36
     bwidth = 0.05
@@ -123,11 +134,6 @@ def iqplot_thread_impl(q):
     bstep = 0.06
 
     buttons = button_press.ButtonPress()
-
-    # axe_frame =  plt.axes([0.13, 0.1, 0.6, bheight])
-    # frame =    Slider(axe_frame, 'Frame', 0, 10000,  valinit=0, valstep=1)
-    # frame.on_changed(buttons.frame)
-    #buttons.frame_slider = bframe
 
     bff_prev = Button( plt.axes([bleft, bbottom, bwidth, bheight]), '<<')
     bff_prev.on_clicked(buttons.ff_prev)
@@ -144,15 +150,16 @@ def iqplot_thread_impl(q):
     bff_next =    Button(plt.axes([bleft + 4 * bstep, bbottom, bwidth, bheight]), '>>')
     bff_next.on_clicked(buttons.ff_next)
     
-    blive =    Button(plt.axes([bleft + 5 * bstep, bbottom, bwidth, bheight]), 'live')
-    blive.on_clicked(buttons.live)
+    blast =    Button(plt.axes([bleft + 5 * bstep, bbottom, bwidth, bheight]), 'last')
+    blast.on_clicked(buttons.last)
 
-    bexport = Button(plt.axes([bleft + 7 * bstep, bbottom, bwidth, bheight]), 'export')
-    bexport.on_clicked(lambda x: buttons.save(readings))
+    bload = Button(plt.axes([bleft + 7 * bstep, bbottom, bwidth, bheight]), 'load')
+    bload.on_clicked(lambda x: buttons.load(config,readings))
+    buttons.importbutton = bload
 
-    bimport = Button(plt.axes([bleft + 8 * bstep, bbottom, bwidth, bheight]), 'import')
-    bimport.on_clicked(lambda x: buttons.load(readings))
-
+    bsave = Button(plt.axes([bleft + 8 * bstep, bbottom, bwidth, bheight]), 'save')
+    bsave.on_clicked(lambda x: buttons.save(config,readings))
+    buttons.savebutton = bsave
 
     offsets = np.zeros(numpoints)
     
@@ -203,11 +210,9 @@ def iqplot_thread_impl(q):
 
     ax8 = plt.axes([0.15,0.18, 0.7,0.05])
     ax8.axis('off')
-    #tmp = np.random.randint(0,255,(1,video_frames))
     tmp = readings.rgba[:,0:video_frames,:]
     video = ax8.imshow(tmp, vmin=0, vmax=255, aspect='auto')
 
-    #seqno = ax6.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
     ax7 = plt.axes([0.11,-0.16, 0.2,0.3])
     ax7.axis('off')
     seqno = ax7.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
@@ -215,15 +220,17 @@ def iqplot_thread_impl(q):
     global anim
     anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno,video),interval=100, blit=True)
     plt.show()
+    #canvas.draw()
 
-iqplot_update_fig.lastReading = -2
+iqplot_update_fig.lastReading = None
 if  __name__ == "__main__":
+    config = read_config()
     readings = rd_store.Readings()
     io = threading.Thread(target=io_thread_impl, args=(readings,))
     io.start()
-    backup = threading.Thread(target=backup_thread_impl, args=(readings,))
+    backup = threading.Thread(target=backup_thread_impl, args=(readings,config))
     backup.start()
-    iqplot_thread_impl(readings)
+    iqplot_thread_impl(readings,config)
 
 
 

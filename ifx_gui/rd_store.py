@@ -19,13 +19,7 @@ class Readings:
         self.head = -1
         self.size = 10000
         self.readings = np.empty(self.size, dtype=Reading)
-        # row 0 is black, points to current frame
-        # row 1 is backwards / forwards
-        # row 2 is ???
-        self.rgba = np.zeros((3,self.size,4),dtype=np.int)
-        self.rgba[:,:,0:2] = 255
-        self.rgba[0,:,:] = 255
-        self.rgba[2,:,:] = 255
+        self.rgba = np.zeros((3,self.size,4),dtype=np.ubyte)
         self.pause = 0
     
     def __iter__(self):
