@@ -95,16 +95,16 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         #iq plot
         scat.set_offsets( np.column_stack((reading["data_i"],reading["data_q"])))
 
-        if hasattr(reading, "magnitudes") == False:
-            process_frame(readings, idx, reading)
+        # if hasattr(reading, "magnitude") == False:
+        #     process_frame(readings, idx, reading)
      
         #magnitude plot
-        mag_plot.set_ydata(reading.magnitudes)
+        mag_plot.set_ydata(reading['magnitude'])
 
         #phase plots
-        phase_plot.set_ydata(reading.phases)
-        unrolled_plot.set_ydata(reading.phases_unrolled)
-        velocity_plot.set_ydata(reading.phase_velocity)
+        phase_plot.set_ydata(reading['phase'])
+        unrolled_plot.set_ydata(reading['phase_unrolled'])
+        velocity_plot.set_ydata(reading['phase_velocity'])
 
         # setting range for video
         (idx_min,idx_max) = calc_window(idx,video_frames,readings)
