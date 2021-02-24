@@ -76,17 +76,18 @@ def frame_rgba(readings,idx, reading):
     rgba = readings.rgba[:,idx]
     if rgba[1,3] == 0:
         # dont repeat the work
-        rgba[1:3,3] = 255
         rgba[1,2] = 0
+        rgba[1,3] = 255
         if reading.rollover_count >= 0:
-            rgba[1,1] = clip( 255 - reading.rollover_count * 25 )
+            rgba[1,1] = clip( 255 - reading.rollover_count * 15 )
             rgba[1,0] = 255
         else:
             rgba[1,1] = 255
-            rgba[1,0] = clip( 255 + reading.rollover_count * 25 )
+            rgba[1,0] = clip( 255 + reading.rollover_count * 15 )
 
-        mag = clip( 255 - int( np.mean(reading['magnitude']) / 3))
+        mag = clip( 255 - int( np.mean(reading['magnitude']) / 5))
         rgba[2,0:2] = mag
+        rgba[2,3] = 150
         # marker
         rgba[0,0:2] = 0
         rgba[0,0:0] = 0

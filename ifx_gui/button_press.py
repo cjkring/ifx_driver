@@ -115,8 +115,9 @@ class ButtonPress(object):
         self.indexFn = self.stop_impl
         datadir = config['app']['data']
         filename = askopenfilename(initialdir=datadir,filetypes = (("avro files","*.avro"),("all files","*.*")))
-        print(f'load: {filename}')
-        avroImport(filename, readings)
-        self.interval = 10000000
-        self.frame_incr = 1
-        self.indexFn = self.next_impl
+        if filename != '':
+            print(f'load: {filename}')
+            avroImport(filename, readings)
+            self.interval = 10000000
+            self.frame_incr = 1
+            self.indexFn = self.next_impl
