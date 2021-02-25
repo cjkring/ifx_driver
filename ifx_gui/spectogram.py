@@ -18,6 +18,8 @@ import logging
 import queue
 import threading
 from io_thread import io_thread_impl
+import config
+import rd_store
 
 
 
@@ -46,29 +48,19 @@ bin_count = 200
     # arr2D = np.random.rand(frequency_count)                          
     # return arr2D
 
+def update_fig(n,im,im_data,readings):
 
-def update_fig(n,im,im_data,q):
-   # global im_data
+    if readings.head < 0 or update_fig.lastReading == readings.head:
+        return im
 
-    # data = get_sample(stream,pa)
-    # data = 0
-    # rate = 0
-    # arr2D = get_specgram(datrate)
-    try:
-        packet = q.get(block=False)   
-    except queue.Empty:
-        return
+    update_fig.lastReading = readings.head
+    reading = readings.readings[readings.head]
+    packet = reading['data_i'] + 1j * reading['data_q']
     sample = packet * hanning(256)
     fft_out = fft(sample)
     fft_prep = np.abs(fft_out) / 500
-    #tmp3 = ( frequency_count // 2 ) + 1
-    #tmp2 = fft_prep[1:tmp3]
-    #tmp1 = , fft_prep[tmp3:1:-1]
-    #fft_final = np.append(tmp1,tmp2)
     fft_final = fft_prep[1:frequency_count+1] + fft_prep[:-frequency_count-1:-1]
-    print(f'fft_final min={fft_final.min()}, max = {fft_final.max()}')
-
-    # for visualization, only l
+    #print(f'fft_final min={fft_final.min()}, max = {fft_final.max()}')
 
     # the oldest column of imdata is removed and a new column is added
     # this is performed by shifting the columns along the x axis then adding a column
@@ -81,9 +73,10 @@ def update_fig(n,im,im_data,q):
 
 
 
-def spectogram_thread_impl(q):
+def spectogram_thread_impl(readings):
     # plot initialization
     fig = plt.figure()
+    fig.set_size_inches(12,8)
     im_data = np.zeros(( bin_count, frequency_count))
    
     extent = (0,bin_count,0,frequency_count)
@@ -94,17 +87,18 @@ def spectogram_thread_impl(q):
     plt.title('Real Time Spectogram')
 
     # animation
-    anim = animation.FuncAnimation(fig,update_fig,fargs=(im,im_data,q), blit = False, interval=100)
+    anim = animation.FuncAnimation(fig,update_fig,fargs=(im,im_data,readings), blit = False, interval=100)
                                 
     try:
         plt.show()
     except:
         print("Plot Closed")
 
+update_fig.lastReading = None
     
 if  __name__ == "__main__":
-    q = queue.Queue(maxsize=1000)
-    io = threading.Thread(target=io_thread_impl, args=(q,))
-    
+    config = config.read_config()
+    readings = rd_store.Readings()
+    io = threading.Thread(target=io_thread_impl, args=(readings,))
     io.start()
-    spectogram_thread_impl(q)
+    spectogram_thread_impl(readings)
