@@ -3,7 +3,7 @@ import numpy as np
 import bottleneck as bn
 
 # this is the entry point
-def process_frame(readings, idx, reading):
+def process_frame(readings, img_q, idx, reading):
 
     reading['packet'] = reading["data_i"] + reading["data_q"] * 1j
     reading['magnitude'] = np.absolute(reading['packet'])
@@ -12,6 +12,13 @@ def process_frame(readings, idx, reading):
     frame_phase_velocity(reading)
     frame_rgba(readings, idx, reading)
     reading['phase'] = bn.move_mean( reading['phase'], window=5, min_count=1 )
+    if img_q.empty() == False:
+        img = img_q.get()
+        reading['image'] = img
+        #print(f'added image to frame {idx}')
+    else:
+        reading['image'] = None
+
 
 def frame_phase_velocity(reading):
     try:

@@ -32,6 +32,8 @@ import button_press
 from annotations import Annotations
 from avro_export import avroImport, avroExport
 from config import read_config
+from queue import Queue
+from image import image_thread
 numpoints = 256
 video_frames = 50
 anim = None
@@ -50,22 +52,24 @@ def calc_window(idx,window_size,readings):
 
     return idx_min,idx_max
 
-def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video):
+def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video, image):
 
     # points come in FIFO order but we want to newest a the top of the array.
     # reading points into the array, then reversing the array and adding points from the 
     # previous data to keep the number of points constant
 
-    # in case annotation button was pressed during the last frame
-    # this is brute force and perhaps incorrect -- perhaps should be cached
-    if buttons.annotation != Annotations.EXISTING:
-        reading = readings.get(iqplot_update_fig.lastReading)
-        reading['annotation'] = buttons.annotation
  
     if iqplot_update_fig.lastReading == None or iqplot_update_fig.lastReading > readings.head:
         # caused by Avro load
         idx = 0
     else:
+
+        # in case annotation button was pressed during the last frame
+        # this is brute force and perhaps incorrect -- perhaps should be cached
+        if buttons.annotation != Annotations.EXISTING:
+            reading = readings.get(iqplot_update_fig.lastReading)
+            reading['annotation'] = buttons.annotation
+
         idx = buttons.indexFn(iqplot_update_fig.lastReading,readings)
 
     if idx == iqplot_update_fig.lastReading or idx == -1:
@@ -73,7 +77,7 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         # TODO: don't return the entire list of artists
         iqplot_update_fig.lastReading = idx
         time.sleep(0.1)
-        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video
+        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video, image
     try:
         
         # the transparency of the current frame is 255, other frames are lower
@@ -110,7 +114,12 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         (idx_min,idx_max) = calc_window(idx,video_frames,readings)
         video.set_array(readings.rgba[:,idx_min:idx_max,:])
 
-        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video
+        #image
+        img = reading['image']
+        if img is not None:
+            image.set_array(img)
+
+        return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video, image
     except Exception as e:
         print(f'Unexpected error: {e}')
         return []
@@ -119,11 +128,12 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 def iqplot_thread_impl(readings,config):
 
     # this produces a dangling root window but is needed for the filesaveas dialogs to work
-    Tk() 
+    Tk()  
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
     fig.set_size_inches(12,8)
     fig.subplots_adjust(bottom=0.3)
+    gridsize = (2,4)
 
     #canvas = FigureCanvasTkAgg(fig, master=root)  # A tk.DrawingArea.
 
@@ -165,45 +175,55 @@ def iqplot_thread_impl(readings,config):
     
     colors = np.array(range(0,numpoints))
 
-    ax1 = fig.add_subplot(231)
-    scat = ax1.scatter(offsets, offsets, c=colors, cmap='plasma', alpha=0.75)
-    ax1.set_xlim(-3000,3000)
-    ax1.set_ylim(-3000,3000)
-    ax1.set_title('I/Q Readings')
+    # I/Q readings
+    ax = plt.subplot2grid(gridsize,(0,0))
+    scat = ax.scatter(offsets, offsets, c=colors, cmap='plasma', alpha=0.75)
+    ax.set_xlim(-3000,3000)
+    ax.set_ylim(-3000,3000)
+    ax.set_title('I/Q Readings')
 
-    ax2 = fig.add_subplot(235)
-    ax2.set_ylim(-np.pi * 1.5,np.pi * 1.5)
-    ax2.set_xlim(0,255)
-    ax2.set_title('phase')
-    ax2.axhline(0,color='grey')
-    phase, = ax2.plot(offsets)
+    # phase
+    ax = plt.subplot2grid(gridsize,(1,1))
+    ax.set_ylim(-np.pi * 1.5,np.pi * 1.5)
+    ax.set_xlim(0,255)
+    ax.set_title('phase')
+    ax.axhline(0,color='grey')
+    phase, = ax.plot(offsets)
 
-    ax3 = fig.add_subplot(234)
-    ax3.set_ylim(-np.pi/2,np.pi/2)
-    ax3.set_xlim(0,254)
-    ax3.set_title('phase velocity')
-    ax3.axhline(0,color='grey')
-    velocity, = ax3.plot(offsets[:-1])
+    # phase velocity
+    ax = plt.subplot2grid(gridsize,(1,0))
+    ax.set_ylim(-np.pi/2,np.pi/2)
+    ax.set_xlim(0,254)
+    ax.set_title('phase velocity')
+    ax.axhline(0,color='grey')
+    velocity, = ax.plot(offsets[:-1])
 
-    ax4 = fig.add_subplot(236)
-    ax4.set_ylim(-np.pi * 10 ,np.pi * 10 )
-    ax4.set_xlim(0,256)
-    ax4.set_title('phase no rollover')
-    ax4.axhline(0,color='grey')
-    unrolled, = ax4.plot(offsets)
+    # phase unrolled
+    ax = plt.subplot2grid(gridsize,(1,2))
+    ax.set_ylim(-np.pi * 10 ,np.pi * 10 )
+    ax.set_xlim(0,256)
+    ax.set_title('phase no rollover')
+    ax.axhline(0,color='grey')
+    unrolled, = ax.plot(offsets)
 
-    ax5 = fig.add_subplot(232)
-    ax5.set_ylim(0 ,2000 )
-    ax5.set_xlim(0,252)
-    ax5.set_title('magnitude')
-    ax5.axhline(0,color='grey')
-    magnitude, = ax5.plot(offsets)
+    # magnitude
+    ax = plt.subplot2grid(gridsize,(0,1))
+    ax.set_ylim(0 ,2000 )
+    ax.set_xlim(0,252)
+    ax.set_title('magnitude')
+    ax.axhline(0,color='grey')
+    magnitude, = ax.plot(offsets)
 
-    ax6 = fig.add_subplot(233)
-    ax6.axis('off')
+    # image 
+    ax = plt.subplot2grid(gridsize,(0,2))
+    ax.axis('off')
+    im_data = np.zeros((30,30),dtype=np.ubyte)
+    image = ax.imshow(im_data, vmin=0, vmax=255, cmap='gray')
 
+    # annotations buttons
+    ax = plt.subplot2grid(gridsize,(0,3),colspan=2)
     labels = [anno.value for anno in Annotations]
-    bannotate = RadioButtons(ax6,labels, active=None)
+    bannotate = RadioButtons(ax,labels, active=None)
     bannotate.on_clicked(buttons.annotate)
     bannotate.set_active(0)
     buttons.annotateButton = bannotate
@@ -218,15 +238,23 @@ def iqplot_thread_impl(readings,config):
     seqno = ax7.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
 
     global anim
-    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno,video),interval=100, blit=True)
+    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno,video,image),interval=100, blit=True)
+    #plt.tight_layout()
     plt.show()
     #canvas.draw()
 
 iqplot_update_fig.lastReading = None
 if  __name__ == "__main__":
+
     config = read_config()
     readings = rd_store.Readings()
-    io = threading.Thread(target=io_thread_impl, args=(readings,))
+
+    img_q = Queue(maxsize=2);
+
+    image_t = threading.Thread(target=image_thread,args=(config,img_q))
+    image_t.start()
+
+    io = threading.Thread(target=io_thread_impl, args=(readings,img_q))
     io.start()
     backup = threading.Thread(target=backup_thread_impl, args=(readings,config))
     backup.start()
