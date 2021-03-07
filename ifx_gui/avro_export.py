@@ -19,6 +19,7 @@ schema = {
         {'name': 'phase', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_velocity', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_unrolled', 'type': {'type': 'array','items':'float'}},
+        {'name': 'image', 'type': {'type': ['null', 'array','items':'int'}]},
     ]
 }
 parsed_schema = parse_schema(schema)

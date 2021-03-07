@@ -14,13 +14,12 @@ import rd_store
 import serial
 import serial.tools.list_ports
 from frame_process import process_frame
-import threading
 
 
 samples_per_packet = 256
 #seek in data for DEADBEEF, then get 12 bytes of data after that.  Data can 
 #spread across multiple data packets.
-def marshall(readings,img_q,data):
+def marshall(reading_q,data):
     
 
     
@@ -34,7 +33,7 @@ def marshall(readings,img_q,data):
         if(len(marshall.last) + len(data) >= packet_len):  
             # sufficient data - concat and parse
             i = packet_len - len(marshall.last)
-            parse_data(readings, img_q, marshall.last + data[:i],1)
+            parse_data(reading_q, marshall.last + data[:i],1)
             marshall.last = b''
         else:
             #insuffient data to parse,  add to last and keep going
@@ -63,14 +62,14 @@ def marshall(readings,img_q,data):
                 marshall.last =  data[i:]
                 return
             else:
-                parse_data(readings, img_q,  data[i:i+packet_len],2)
+                parse_data(reading_q, data[i:i+packet_len],2)
                 i = i + packet_len
                 marshall.looking = 0
             
         else:
             i = i + 1
 
-def parse_data(readings, img_q, packet,loc):       
+def parse_data(reading_q, packet,loc):       
 
     #print("parsing: ",loc,',', list(packet))
 
@@ -98,11 +97,8 @@ def parse_data(readings, img_q, packet,loc):
             #print(reading)
         #print(loc,',',seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
 
-        # has to be this order because process_frame requires the reading idx
-        # and we have a race condition if we put before process_frame
         reading = rd_store.Reading(seqno,count,data_i,data_q)
-        process_frame(readings, img_q, readings.head + 1, reading)
-        readings.put(reading)
+        reading_q.put(reading)
     except Exception as e:
         print(f'parsing exception: dropping packet after {seqno}:{e}')
         return
@@ -120,7 +116,7 @@ parse_data.prev_seqno = 0
 
 # this is the interface to the Sense2Go module via a USB CDC serial port
 
-def io_thread_impl(readings,img_q):
+def io_thread_impl(reading_q):
     logging.warning("IO Thread started")
     io_thread_impl.keep_running = True
 
@@ -146,7 +142,7 @@ def io_thread_impl(readings,img_q):
                     length = len(data)
                     #print("recv", length, ": ", list(data))
                     if(length > 0):         
-                        marshall(readings, img_q, data)
+                        marshall(reading_q, data)
                         #time.sleep(0.001)
                 except:
                     print('closing serial port')
@@ -155,8 +151,6 @@ def io_thread_impl(readings,img_q):
             time.sleep(1)
                 
     logging.warning("IO Thread ended")
-
-#keep_running = threading.Lock()
 
 def io_thread_lock(value):
     if value == True:
@@ -171,7 +165,7 @@ def io_thread_lock(value):
  # does not support the IFX ComLib interface.  Rather the marshalling was pushed
  # into the Sense2Go M0 MCU and we are now getting data from the serial interface.
 
-def io_thread_socket_impl(readings):
+def io_thread_socket_impl(reading_q):
     logging.warning("IO Thread started")
 
     keep_running = 1
@@ -210,7 +204,7 @@ def io_thread_socket_impl(readings):
                 length = len(data)
                 #print("recv", length, ": ", list(data))
                 if(length > 0):         
-                    marshall(readings,data)
+                    marshall(reading_q,data)
                     time.sleep(0.001)
                 else:
                     sock.close()
