@@ -13,7 +13,7 @@ def validate_config(config):
     
     retval = True
     app_config = config['app']
-    for key in ['sensor_id','data']:
+    for key in ['sensor_id','data','annotations']:
         if key not in app_config:
             print(f'config validation: {key} does not exist in app config')
             retval = False
@@ -24,3 +24,8 @@ def validate_config(config):
             print(f'config validation: {key} does not exist in aws config')
             retval = False
     return retval
+    
+if  __name__ == "__main__":
+
+    config = read_config()
+    validate_config(config)

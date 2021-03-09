@@ -2,17 +2,18 @@
 import numpy as np
 import json
 import time
-from annotations import Annotations
+from annotations import getAnnotations
 
 class Reading(dict):
 
     def __init__(self, seqno, count, data_i, data_q):
+        global Annotations
         self['timestamp'] = time.time()
         self['seqno'] = seqno
         self['count'] = count
         self['data_i'] = np.asarray(data_i)
         self['data_q'] = np.asarray(data_q)
-        self['annotation'] = Annotations.NONE
+        #self['annotation'] = getAnnotations()['NONE']
 
 class Readings:
     def __init__(self):

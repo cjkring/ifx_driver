@@ -98,6 +98,7 @@ def parse_data(reading_q, packet,loc):
         #print(loc,',',seqno,',',len(reading_array),',',reading_array[0],',',reading_array[-1])
 
         reading = rd_store.Reading(seqno,count,data_i,data_q)
+        process_frame(reading)
         reading_q.put(reading)
     except Exception as e:
         print(f'parsing exception: dropping packet after {seqno}:{e}')

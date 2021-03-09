@@ -1,16 +1,22 @@
 #import easygui
-from annotations import Annotations
+
+from annotations import getAnnotations, addToAnnotations
 from tkinter.filedialog import askopenfilename, asksaveasfilename
 from avro_export import avroExport, avroImport
 from io_thread import io_thread_lock
 from time import time_ns
+import matplotlib.pyplot as plt
+from iqplot import createRadioButton
+from aws_connector import awsExport
+
 class ButtonPress(object):
     def __init__(self):
+        global Annotations
         self.indexFn = self.last_impl
         self.interval = 200
         self.frame_incr = 1
         self.last_update = 0
-        self.annotation = Annotations.NONE
+        self.annotation = getAnnotations().NONE
         self.annotateButton = None
     
     
@@ -19,7 +25,7 @@ class ButtonPress(object):
 
     # annotation radio button
     def annotate(self, event):
-        self.annotation = Annotations(event)
+        self.annotation = getAnnotations()[event]
         print(f'setting annotation to {self.annotation}')
 
     # frame slider
@@ -64,8 +70,16 @@ class ButtonPress(object):
 
     # turns annotations back to existing when a speed button is pressed
     def setAnnotationsExisting(self):
-        self.annotation = Annotations.EXISTING
+        self.annotation = getAnnotations().EXISTING
         self.annotateButton.set_active(0)
+
+    def addAnnotation(self, event):
+        addToAnnotations([event])
+        ax = self.annotateButton.ax
+        self.anno_textbox.set_val('')
+        ax.clear()
+        createRadioButton(ax, self)
+
 
     # when you click on a ff button you switch beween fast and really fast
     def toggle_speed(self, indexFn, slow, fast):
@@ -104,20 +118,28 @@ class ButtonPress(object):
         return readings.head
 
     def save(self,config,readings):
-        filename = asksaveasfilename()
+        datadir = config['app']['data']
+        filename = asksaveasfilename(initialdir=datadir,filetypes = (("avro files","*.avro"),("all files","*.*")))
         print(f'save: {filename}')
         avroExport(filename, readings)
         io_thread_lock(False)
         self.indexFn = self.last_impl
 
     def load(self,config,readings):
-        io_thread_lock(True)
-        self.indexFn = self.stop_impl
         datadir = config['app']['data']
         filename = askopenfilename(initialdir=datadir,filetypes = (("avro files","*.avro"),("all files","*.*")))
         if filename != '':
             print(f'load: {filename}')
+            io_thread_lock(True)
+            self.indexFn = self.stop_impl
             avroImport(filename, readings)
             self.interval = 10000000
             self.frame_incr = 1
             self.indexFn = self.next_impl
+
+    def export(self,config,readings):
+        datadir = config['app']['data']
+        filename = askopenfilename(initialdir=datadir,filetypes = (("avro files","*.avro"),("all files","*.*")))
+        if filename != '':
+            print(f'export: {filename}')
+            awsExport(config, filename)

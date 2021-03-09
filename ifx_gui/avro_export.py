@@ -13,13 +13,13 @@ schema = {
         {'name': 'timestamp', 'type': 'double'},
         {'name': 'seqno', 'type': 'int'},
         {'name': 'count', 'type': 'int'},
+        {'name': 'annotation', 'type': 'int'},
         {'name': 'data_i', 'type': {'type': 'array','items':'int'}},
         {'name': 'data_q', 'type': {'type': 'array','items':'int'}},
         {'name': 'magnitude', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_velocity', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_unrolled', 'type': {'type': 'array','items':'float'}},
-        {'name': 'image', 'type': {'type': ['null', 'array','items':'int'}]},
     ]
 }
 parsed_schema = parse_schema(schema)
@@ -27,7 +27,7 @@ def avroExport(filename, readings):
     count = readings.head
     prev = round( time(), 3 )
     try:
-        with open(fullpathname, 'wb') as f:
+        with open(filename, 'wb') as f:
             # write the schema and headers with the first on
             writer(f, parsed_schema, readings)
     except Exception as e:
@@ -36,7 +36,7 @@ def avroExport(filename, readings):
     print(f'AvroExport:{count} readings in {now-prev} seconds')
 
 def avroImport(filename, readings):
-    now = round( time(), 3 )
+    prev = round( time(), 3 )
     count = 0
     try:
         # reset readings,  the io_thread was stopped by the calling function

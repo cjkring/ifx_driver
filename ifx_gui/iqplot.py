@@ -15,7 +15,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.figure import Figure
-from frame_process import process_frame
+from frame_process import frame_rgba
+import multiprocessing as mp
 
 import numpy as np
 import logging
@@ -29,9 +30,9 @@ from backup_thread import backup_thread_impl
 from matplotlib.widgets import Button, RadioButtons, TextBox, Slider
 import rd_store
 import button_press
-from annotations import Annotations
+from annotations import getAnnotations, addToAnnotations
 from avro_export import avroImport, avroExport
-from config import read_config
+from config import read_config, validate_config
 from queue import Queue
 from image import image_thread
 numpoints = 256
@@ -52,11 +53,20 @@ def calc_window(idx,window_size,readings):
 
     return idx_min,idx_max
 
-def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video, image):
+def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video, image):
 
-    # points come in FIFO order but we want to newest a the top of the array.
-    # reading points into the array, then reversing the array and adding points from the 
-    # previous data to keep the number of points constant
+    # readings are pushed to reading_q by the io_thread Process.
+
+    # TODO: this probably breaks due to avro load.  Sort out later....
+    while reading_q.empty() == False:
+        reading = reading_q.get()
+        readings.put(reading)
+        frame_rgba(readings, readings.head, reading)
+        reading['annotation'] = getAnnotations().NONE
+        if img_q.empty() == False:
+            reading['image'] = img_q.get()
+        else: 
+            reading['image'] = None
 
  
     if iqplot_update_fig.lastReading == None or iqplot_update_fig.lastReading > readings.head:
@@ -66,7 +76,7 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
         # in case annotation button was pressed during the last frame
         # this is brute force and perhaps incorrect -- perhaps should be cached
-        if buttons.annotation != Annotations.EXISTING:
+        if buttons.annotation != getAnnotations().EXISTING:
             reading = readings.get(iqplot_update_fig.lastReading)
             reading['annotation'] = buttons.annotation
 
@@ -89,11 +99,11 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
         reading = readings.get(iqplot_update_fig.lastReading)
 
         # annotation specified by radio button
-        if buttons.annotation != Annotations.EXISTING:
+        if buttons.annotation != getAnnotations().EXISTING:
             reading['annotation'] = buttons.annotation
 
         date_time = datetime.fromtimestamp(reading['timestamp'])
-        seqno.set_text(f'frame: {idx}\ntime: {date_time}\nseqno: {reading["seqno"]}\nannotation: {reading["annotation"].value}')
+        seqno.set_text(f'frame: {idx}\ntime: {date_time}\nseqno: {reading["seqno"]}\nannotation: {reading["annotation"].name}')
         #print(f'{reading["seqno"]},{reading["count"]},{packet[0]},{packet[-1]}')
 
         #iq plot
@@ -121,93 +131,74 @@ def iqplot_update_fig(n,  readings, buttons, scat, phase_plot, velocity_plot, un
 
         return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video, image
     except Exception as e:
-        print(f'Unexpected error: {e}')
+        print(f'iqplot_update_fig: {e}')
         return []
 
+    
+def createRadioButton(ax,buttons):
+    labels = [anno.name for anno in getAnnotations()]
+    bannotate = RadioButtons(ax,labels, active=None)
+    bannotate.on_clicked(buttons.annotate)
+    bannotate.set_active(0)
+    buttons.annotateButton = bannotate
 
-def iqplot_thread_impl(readings,config):
+def iqplot_thread_impl(readings,config,reading_q, img_q):
 
     # this produces a dangling root window but is needed for the filesaveas dialogs to work
     Tk()  
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
     fig.set_size_inches(12,8)
-    fig.subplots_adjust(bottom=0.3)
-    gridsize = (2,4)
-
-    #canvas = FigureCanvasTkAgg(fig, master=root)  # A tk.DrawingArea.
-
-    bleft = 0.36
-    bwidth = 0.05
-    bbottom = 0.05
-    bheight = 0.035
-    bstep = 0.06
+    gridsize = (30,40)
 
     buttons = button_press.ButtonPress()
-
-    bff_prev = Button( plt.axes([bleft, bbottom, bwidth, bheight]), '<<')
-    bff_prev.on_clicked(buttons.ff_prev)
-
-    bprev =  Button(plt.axes([bleft + bstep, bbottom, bwidth, bheight]), '<')
-    bprev.on_clicked(buttons.prev)
-    
-    bstop =  Button(plt.axes([bleft + 2 * bstep, bbottom, bwidth, bheight]), '||')
-    bstop.on_clicked(buttons.stop)
-    
-    bnext =  Button(plt.axes([bleft + 3 * bstep, bbottom, bwidth, bheight]), '>')
-    bnext.on_clicked(buttons.next)
-    
-    bff_next =    Button(plt.axes([bleft + 4 * bstep, bbottom, bwidth, bheight]), '>>')
-    bff_next.on_clicked(buttons.ff_next)
-    
-    blast =    Button(plt.axes([bleft + 5 * bstep, bbottom, bwidth, bheight]), 'last')
-    blast.on_clicked(buttons.last)
-
-    bload = Button(plt.axes([bleft + 7 * bstep, bbottom, bwidth, bheight]), 'load')
-    bload.on_clicked(lambda x: buttons.load(config,readings))
-    buttons.importbutton = bload
-
-    bsave = Button(plt.axes([bleft + 8 * bstep, bbottom, bwidth, bheight]), 'save')
-    bsave.on_clicked(lambda x: buttons.save(config,readings))
-    buttons.savebutton = bsave
-
     offsets = np.zeros(numpoints)
     
     colors = np.array(range(0,numpoints))
 
     # I/Q readings
-    ax = plt.subplot2grid(gridsize,(0,0))
-    scat = ax.scatter(offsets, offsets, c=colors, cmap='plasma', alpha=0.75)
+    ax = plt.subplot2grid(gridsize,(0,0),rowspan=9,colspan=10)
+    ax.set_yticks([])
+    ax.set_xticks([])
     ax.set_xlim(-3000,3000)
     ax.set_ylim(-3000,3000)
+    scat = ax.scatter(offsets, offsets, c=colors, cmap='plasma', alpha=0.75)
     ax.set_title('I/Q Readings')
 
     # phase
-    ax = plt.subplot2grid(gridsize,(1,1))
+    ax = plt.subplot2grid(gridsize,(10,10),rowspan=9,colspan=10)
+    ax.set_yticks([])
+    ax.set_xticks([])
     ax.set_ylim(-np.pi * 1.5,np.pi * 1.5)
     ax.set_xlim(0,255)
-    ax.set_title('phase')
     ax.axhline(0,color='grey')
     phase, = ax.plot(offsets)
+    ax.set_title('phase')
 
     # phase velocity
-    ax = plt.subplot2grid(gridsize,(1,0))
+    ax = plt.subplot2grid(gridsize,(10,0),rowspan=9,colspan=10)
+    ax.set_yticks([])
+    ax.set_xticks([])
     ax.set_ylim(-np.pi/2,np.pi/2)
     ax.set_xlim(0,254)
-    ax.set_title('phase velocity')
     ax.axhline(0,color='grey')
     velocity, = ax.plot(offsets[:-1])
+    ax.set_title('phase velocity')
 
     # phase unrolled
-    ax = plt.subplot2grid(gridsize,(1,2))
+    ax = plt.subplot2grid(gridsize,(10,20),rowspan=9,colspan=10)
+    ax.set_yticks([])
+    ax.set_xticks([])
     ax.set_ylim(-np.pi * 10 ,np.pi * 10 )
     ax.set_xlim(0,256)
-    ax.set_title('phase no rollover')
     ax.axhline(0,color='grey')
     unrolled, = ax.plot(offsets)
+    ax.set_title('phase no rollover')
 
     # magnitude
-    ax = plt.subplot2grid(gridsize,(0,1))
+    ax = plt.subplot2grid(gridsize,(0,10),rowspan=9,colspan=10)
+    ax.set_yticks([])
+    ax.set_xticks([])
     ax.set_ylim(0 ,2000 )
     ax.set_xlim(0,252)
     ax.set_title('magnitude')
@@ -215,30 +206,68 @@ def iqplot_thread_impl(readings,config):
     magnitude, = ax.plot(offsets)
 
     # image 
-    ax = plt.subplot2grid(gridsize,(0,2))
+    ax = plt.subplot2grid(gridsize,(0,20),rowspan=9,colspan=10)
     ax.axis('off')
-    im_data = np.zeros((30,30),dtype=np.ubyte)
+    ax.set_title('image')
+    im_data = np.random.randint(230,255,(30,30),dtype=np.ubyte)
     image = ax.imshow(im_data, vmin=0, vmax=255, cmap='gray')
 
     # annotations buttons
-    ax = plt.subplot2grid(gridsize,(0,3),colspan=2)
-    labels = [anno.value for anno in Annotations]
-    bannotate = RadioButtons(ax,labels, active=None)
-    bannotate.on_clicked(buttons.annotate)
-    bannotate.set_active(0)
-    buttons.annotateButton = bannotate
+    ax = plt.subplot2grid(gridsize,(0,30),rowspan=18,colspan=10)
+    ax.set_title('annotations')
+    createRadioButton(ax,buttons)
 
-    ax8 = plt.axes([0.15,0.18, 0.7,0.05])
-    ax8.axis('off')
+    ax = plt.subplot2grid(gridsize,(18,30),rowspan=1,colspan=10)
+    text_box = TextBox(ax,None)
+    text_box.on_submit(buttons.addAnnotation)
+    buttons.anno_textbox = text_box
+
+
+    # rgb hostory
+    ax = plt.subplot2grid(gridsize,(20,0),rowspan=3,colspan=40)
+    ax.axis('off')
     tmp = readings.rgba[:,0:video_frames,:]
-    video = ax8.imshow(tmp, vmin=0, vmax=255, aspect='auto')
+    video = ax.imshow(tmp, vmin=0, vmax=255, aspect='auto')
 
-    ax7 = plt.axes([0.11,-0.16, 0.2,0.3])
-    ax7.axis('off')
-    seqno = ax7.text(0.0, 0.75, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
+    # info text
+    ax = plt.subplot2grid(gridsize,(24,0),rowspan=5,colspan=15)
+    ax.axis('off')
+    seqno = ax.text(0, 0, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
+
+    # control buttons
+    bff_prev = Button( plt.subplot2grid(gridsize,(24,16),rowspan=2,colspan=3), '<<')
+    bff_prev.on_clicked(buttons.ff_prev)
+
+    bprev =  Button( plt.subplot2grid(gridsize,(24,20),rowspan=2,colspan=3), '<')
+    bprev.on_clicked(buttons.prev)
+    
+    bstop =  Button( plt.subplot2grid(gridsize,(24,24),rowspan=2,colspan=3), '||')
+    bstop.on_clicked(buttons.stop)
+    
+    bnext = Button( plt.subplot2grid(gridsize,(24,28),rowspan=2,colspan=3), '>')
+    bnext.on_clicked(buttons.next)
+    
+    bff_next = Button( plt.subplot2grid(gridsize,(24,32),rowspan=2,colspan=3), '>>')
+    bff_next.on_clicked(buttons.ff_next)
+    
+    blast = Button( plt.subplot2grid(gridsize,(24,36),rowspan=2,colspan=3), 'last')
+    blast.on_clicked(buttons.last)
+
+    bload = Button( plt.subplot2grid(gridsize,(27,22),rowspan=2,colspan=3), 'load')
+    bload.on_clicked(lambda x: buttons.load(config,readings))
+    buttons.importbutton = bload
+
+    bsave = Button( plt.subplot2grid(gridsize,(27,26),rowspan=2,colspan=3), 'save')
+    bsave.on_clicked(lambda x: buttons.save(config,readings))
+    buttons.savebutton = bsave
+
+    bexport = Button( plt.subplot2grid(gridsize,(27,30),rowspan=2,colspan=3), 'export')
+    bexport.on_clicked(lambda x: buttons.export(config,readings))
+    buttons.exportbutton = bexport
+
 
     global anim
-    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,buttons,scat,phase,velocity,unrolled,magnitude,seqno,video,image),interval=100, blit=True)
+    anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,reading_q, img_q, buttons,scat,phase,velocity,unrolled,magnitude,seqno,video,image),interval=100, blit=True)
     #plt.tight_layout()
     plt.show()
     #canvas.draw()
@@ -247,18 +276,24 @@ iqplot_update_fig.lastReading = None
 if  __name__ == "__main__":
 
     config = read_config()
+    validate_config(config)
+    addToAnnotations(config['app']['annotations'])
     readings = rd_store.Readings()
 
-    img_q = Queue(maxsize=2);
+    img_q = mp.Queue(maxsize=2);
+    reading_q = mp.Queue(maxsize=2);
 
-    image_t = threading.Thread(target=image_thread,args=(config,img_q))
+    image_t = mp.Process(target=image_thread,args=(config,img_q))
     image_t.start()
 
-    io = threading.Thread(target=io_thread_impl, args=(readings,img_q))
+    io = mp.Process(target=io_thread_impl, args=(reading_q,))
     io.start()
+
+    # this has to be a thread because it relies on readings
+    # if this becomes an issue it can put checked and implemented from the iq_thread
     backup = threading.Thread(target=backup_thread_impl, args=(readings,config))
     backup.start()
-    iqplot_thread_impl(readings,config)
+    iqplot_thread_impl(readings,config,reading_q, img_q)
 
 
 

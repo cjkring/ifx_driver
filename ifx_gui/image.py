@@ -5,9 +5,16 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #import queue
 import math
-import picamera
+enableCamera = True
+try:
+    import picamera
+except ImportError as e:
+    enableCamera = False
 
 def image_thread(conf,img_q):
+    if enableCamera == False:
+        print('PiCamera not installed -- images disabled')
+        return
     (h,w) = conf['app']['image_size'].split('x')
     h = 64
     w = 64
@@ -25,16 +32,16 @@ def image_thread(conf,img_q):
         # wake up at top of the current second
         time.sleep(math.ceil(now) - now)
 
-def image_update_fig(n,img_q,im):
-    if img_q.empty() == False:
-        im_data = img_q.get()
-        im.set_array(im_data)
-    return im
-
 if  __name__ == "__main__":
     #import threading
     import multiprocessing as mp
     import config
+
+    def image_update_fig(n,img_q,im):
+        if img_q.empty() == False:
+            im_data = img_q.get()
+            im.set_array(im_data)
+        return im
 
     conf = config.read_config()
     config.validate_config(conf)
