@@ -122,18 +122,18 @@ def io_thread_impl(reading_q):
     io_thread_impl.keep_running = True
 
     
-    while True:
+    foundPort = False
+    while foundPort is False:
         port = None
         for p in serial.tools.list_ports.comports():
             if p.vid == 4966 and p.pid == 261:
                 port = p
+                foundPort = True
                 print(f'Found: {port}')
                 break
 
-        if port == None:
+        if foundPort == False:
             time.sleep(1)
-        else:
-            break
 
     first = True
     while True:
@@ -226,4 +226,8 @@ def io_thread_socket_impl(reading_q):
     time.sleep(0.1)
                 
     logging.warning("IO Thread ended")
-    
+
+if  __name__ == "__main__":
+    #import threading
+    import queue
+    io_thread_impl(queue.Queue(maxsize=10000))

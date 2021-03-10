@@ -18,7 +18,7 @@ class Reading(dict):
 class Readings:
     def __init__(self):
         self.head = -1
-        self.size = 10000
+        self.size = 20000
         self.readings = np.empty(self.size, dtype=Reading)
         self.rgba = np.zeros((3,self.size,4),dtype=np.ubyte)
         self.pause = 0

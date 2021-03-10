@@ -12,6 +12,7 @@ from tkinter import Tk
 #from matplotlib.backend_bases import key_press_handler
 
 import matplotlib
+matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.figure import Figure
@@ -53,11 +54,16 @@ def calc_window(idx,window_size,readings):
 
     return idx_min,idx_max
 
+def iqplot_update_test(n, img_q, image):
+    if img_q.empty() == False:
+        image.set_array(img_q.get())
+    return [image]
+
 def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot, velocity_plot, unrolled_plot, mag_plot, seqno, video, image):
 
     # readings are pushed to reading_q by the io_thread Process.
 
-    # TODO: this probably breaks due to avro load.  Sort out later....
+    #TODO: this probably breaks due to avro load.  Sort out later....
     while reading_q.empty() == False:
         reading = reading_q.get()
         readings.put(reading)
@@ -65,6 +71,8 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
         reading['annotation'] = getAnnotations().NONE
         if img_q.empty() == False:
             reading['image'] = img_q.get()
+            #print(f'added image: {reading["seqno"]}')
+            break
         else: 
             reading['image'] = None
 
@@ -78,7 +86,8 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
         # this is brute force and perhaps incorrect -- perhaps should be cached
         if buttons.annotation != getAnnotations().EXISTING:
             reading = readings.get(iqplot_update_fig.lastReading)
-            reading['annotation'] = buttons.annotation
+            if reading is not None:
+                reading['annotation'] = buttons.annotation
 
         idx = buttons.indexFn(iqplot_update_fig.lastReading,readings)
 
@@ -97,6 +106,7 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
 
         iqplot_update_fig.lastReading = idx
         reading = readings.get(iqplot_update_fig.lastReading)
+        #print(f'iqplot update: seqno = {reading["seqno"]}')
 
         # annotation specified by radio button
         if buttons.annotation != getAnnotations().EXISTING:
@@ -127,6 +137,7 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
         #image
         img = reading['image']
         if img is not None:
+            #print(f'set image: {reading["seqno"]}')
             image.set_array(img)
 
         return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video, image
@@ -148,7 +159,13 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     Tk()  
     logging.warning("IQ Plot Thread started")
     fig = plt.figure()
-    fig.set_size_inches(12,8)
+    # font = {'family': 'monospace',
+    #         'weight': 'normal',
+    #         'size':8}
+    # matplotlib.rc('font', **font)
+            
+    #fig.set_size_inches(12,8)
+    plt.rcParams.update({'font.size':8})
     gridsize = (30,40)
 
     buttons = button_press.ButtonPress()
@@ -163,7 +180,7 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     ax.set_xlim(-3000,3000)
     ax.set_ylim(-3000,3000)
     scat = ax.scatter(offsets, offsets, c=colors, cmap='plasma', alpha=0.75)
-    ax.set_title('I/Q Readings')
+    #ax.set_title('I/Q Readings')
 
     # phase
     ax = plt.subplot2grid(gridsize,(10,10),rowspan=9,colspan=10)
@@ -173,7 +190,7 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     ax.set_xlim(0,255)
     ax.axhline(0,color='grey')
     phase, = ax.plot(offsets)
-    ax.set_title('phase')
+    #ax.set_title('phase')
 
     # phase velocity
     ax = plt.subplot2grid(gridsize,(10,0),rowspan=9,colspan=10)
@@ -183,7 +200,7 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     ax.set_xlim(0,254)
     ax.axhline(0,color='grey')
     velocity, = ax.plot(offsets[:-1])
-    ax.set_title('phase velocity')
+    #ax.set_title('phase velocity')
 
     # phase unrolled
     ax = plt.subplot2grid(gridsize,(10,20),rowspan=9,colspan=10)
@@ -193,7 +210,7 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     ax.set_xlim(0,256)
     ax.axhline(0,color='grey')
     unrolled, = ax.plot(offsets)
-    ax.set_title('phase no rollover')
+    #ax.set_title('phase no rollover')
 
     # magnitude
     ax = plt.subplot2grid(gridsize,(0,10),rowspan=9,colspan=10)
@@ -201,20 +218,20 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     ax.set_xticks([])
     ax.set_ylim(0 ,2000 )
     ax.set_xlim(0,252)
-    ax.set_title('magnitude')
+    #ax.set_title('magnitude')
     ax.axhline(0,color='grey')
     magnitude, = ax.plot(offsets)
 
     # image 
     ax = plt.subplot2grid(gridsize,(0,20),rowspan=9,colspan=10)
     ax.axis('off')
-    ax.set_title('image')
+    #ax.set_title('image')
     im_data = np.random.randint(230,255,(30,30),dtype=np.ubyte)
     image = ax.imshow(im_data, vmin=0, vmax=255, cmap='gray')
 
     # annotations buttons
     ax = plt.subplot2grid(gridsize,(0,30),rowspan=18,colspan=10)
-    ax.set_title('annotations')
+    #ax.set_title('annotations')
     createRadioButton(ax,buttons)
 
     ax = plt.subplot2grid(gridsize,(18,30),rowspan=1,colspan=10)
@@ -232,7 +249,7 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
     # info text
     ax = plt.subplot2grid(gridsize,(24,0),rowspan=5,colspan=15)
     ax.axis('off')
-    seqno = ax.text(0, 0, "frame:\ntime:\nseqno:\nannotation:", fontsize=10)
+    seqno = ax.text(0, 0, "frame:\ntime:\nseqno:\nannotation:",fontsize=8)
 
     # control buttons
     bff_prev = Button( plt.subplot2grid(gridsize,(24,16),rowspan=2,colspan=3), '<<')
@@ -267,10 +284,11 @@ def iqplot_thread_impl(readings,config,reading_q, img_q):
 
 
     global anim
+    #anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,reading_q, img_q, buttons,scat,phase,velocity,unrolled,magnitude,seqno,video,image),interval=100, blit=False)
     anim = animation.FuncAnimation(fig,iqplot_update_fig,fargs=(readings,reading_q, img_q, buttons,scat,phase,velocity,unrolled,magnitude,seqno,video,image),interval=100, blit=True)
-    #plt.tight_layout()
+    figManager = plt.get_current_fig_manager()
+    figManager.full_screen_toggle()
     plt.show()
-    #canvas.draw()
 
 iqplot_update_fig.lastReading = None
 if  __name__ == "__main__":
@@ -281,7 +299,7 @@ if  __name__ == "__main__":
     readings = rd_store.Readings()
 
     img_q = mp.Queue(maxsize=2);
-    reading_q = mp.Queue(maxsize=2);
+    reading_q = mp.Queue(maxsize=5);
 
     image_t = mp.Process(target=image_thread,args=(config,img_q))
     image_t.start()

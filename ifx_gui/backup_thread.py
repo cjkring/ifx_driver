@@ -6,7 +6,8 @@ import rd_store
 import datetime
 from config import read_config, validate_config
 from avro_export import avroExport
-import aws_connector
+from aws_connector import awsExport
+from os import path
 
 
 def backup_impl(readings,config):
@@ -15,12 +16,13 @@ def backup_impl(readings,config):
     sensor_id = config['app']['sensor_id']
     data = config['app']['data']
     
-    filename = f'year={now.year}_month={now.month}_day={now.day}_hour={now.hour}_{sensor_id}.avro'
-    avroExport(data, filename, backup)
-    aws_connector.upload_file(config, data, filename)
+    basename = f'year={now.year}_month={now.month}_day={now.day}_hour={now.hour}_{sensor_id}.avro'
+    filename = path.join(data, basename)
+    avroExport(filename, backup)
+    awsExport(config, filename)
 
 def backup_thread_impl(readings,config):
-    logging.warning("Backup thread started")
+    logging.info("Backup thread started")
 
     while True:
 
@@ -28,6 +30,8 @@ def backup_thread_impl(readings,config):
         now = datetime.datetime.now()
         sleep_secs = ( 59 - now.minute ) * 60 + 60 - now.second
         time.sleep(sleep_secs)
+        logging.info(f"Backup initiated at {datetime.datetime.now()}")
+        backup_impl(readings,config)
 
     logging.warning("Backup thread ended")
 

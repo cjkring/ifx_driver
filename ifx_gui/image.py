@@ -28,7 +28,7 @@ def image_thread(conf,img_q):
         img = np.rot90(np.resize(frame,(h,w)))
         img_q.put(img)
         now = time.time()
-        print(f'now = {now}')
+        #print(f'new image = {now}')
         # wake up at top of the current second
         time.sleep(math.ceil(now) - now)
 
