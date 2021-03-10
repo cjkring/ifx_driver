@@ -122,32 +122,44 @@ def io_thread_impl(reading_q):
     io_thread_impl.keep_running = True
 
     
-    port = None
-    for p in serial.tools.list_ports.comports():
-        if p.vid == 4966 and p.pid == 261:
-            port = p
-            print(f'Found: {port}')
+    while True:
+        port = None
+        for p in serial.tools.list_ports.comports():
+            if p.vid == 4966 and p.pid == 261:
+                port = p
+                print(f'Found: {port}')
+                break
+
+        if port == None:
+            time.sleep(1)
+        else:
             break
 
-    if port == None:
-        return
-
+    first = True
     while True:
         if io_thread_impl.keep_running:
-            ser = serial.Serial(port.device, 128000, timeout=1)
+            try:
+                ser = serial.Serial(port.device, 128000, timeout=1)
+                first = True
 
-            #Look for the response
-            while io_thread_impl.keep_running:
-                try:
-                    data = ser.read(1024)
-                    length = len(data)
-                    #print("recv", length, ": ", list(data))
-                    if(length > 0):         
-                        marshall(reading_q, data)
-                        #time.sleep(0.001)
-                except:
-                    print('closing serial port')
-                    ser.close()
+                #Look for the response
+                while io_thread_impl.keep_running:
+                    try:
+                        data = ser.read(1024)
+                        length = len(data)
+                        #print("recv", length, ": ", list(data))
+                        if(length > 0):         
+                            marshall(reading_q, data)
+                            #time.sleep(0.001)
+                    except:
+                        print('closing serial port')
+                        ser.close()
+                        break
+            except Exception as e:
+                if first:
+                    print(f'io_thread: Cannot open serial port: {e}')
+                first = False
+                time.sleep(1)
         else:
             time.sleep(1)
                 

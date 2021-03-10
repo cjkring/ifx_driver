@@ -71,7 +71,7 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
  
     if iqplot_update_fig.lastReading == None or iqplot_update_fig.lastReading > readings.head:
         # caused by Avro load
-        idx = 0
+        idx = readings.head
     else:
 
         # in case annotation button was pressed during the last frame
