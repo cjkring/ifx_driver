@@ -20,7 +20,8 @@ schema = {
         {'name': 'phase', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_velocity', 'type': {'type': 'array','items':'float'}},
         {'name': 'phase_unrolled', 'type': {'type': 'array','items':'float'}},
-        {'name': 'image', 'type': ['null', {'type': 'array','items':{'type': 'array', 'items':'bytes'}}]},
+        #{'name': 'image', 'type': ['null', {'type': 'array','items':'bytes'}]},
+        {'name': 'image', 'type': ['null','bytes']},
     ]
 }
 def updateAndParseSchema():
@@ -127,7 +128,7 @@ if  __name__ == "__main__":
         reading['annotation'] = random.choice(list(getAnnotations())).name
         process_frame(reading)
         if seqno % 5 == 0:
-             reading['image'] = np.random.randint(230,255,(30,30),dtype=np.ubyte)
+             reading['image'] = np.random.randint(230,255,(64,64),dtype=np.ubyte).tobytes()
     now = round( time(), 3 )
     print(f'Avro Test: generated data in {now-prev} seconds')
     prev = now

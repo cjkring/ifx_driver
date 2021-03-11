@@ -135,10 +135,12 @@ def iqplot_update_fig(n,  readings, reading_q, img_q, buttons, scat, phase_plot,
         video.set_array(readings.rgba[:,idx_min:idx_max,:])
 
         #image
-        img = reading['image']
-        if img is not None:
+        img_bytes = reading['image']
+        if img_bytes is not None:
+            # see comment in image.py about how this has to be a native 
+            # python array for Avro export
+            image.set_array(np.reshape(np.frombuffer(img_bytes,dtype=np.uint8),newshape=(64,64)))
             #print(f'set image: {reading["seqno"]}')
-            image.set_array(img)
 
         return scat,phase_plot,velocity_plot,unrolled_plot,mag_plot,seqno, video, image
     except Exception as e:

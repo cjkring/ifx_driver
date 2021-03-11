@@ -1,11 +1,13 @@
-#import cv2
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-#import queue
 import math
 enableCamera = True
+
+# NOTE:  The image is captured and manipulated as an np array, then converted to native
+# bytes because this is what works for avro import / export.   If has to be converted back 
+# to a np array for imshow
 try:
     import picamera
 except ImportError as e:
@@ -26,7 +28,7 @@ def image_thread(conf,img_q):
         frame = np.empty((h*w*2),dtype=np.ubyte)
         camera.capture(frame,'yuv')
         img = np.rot90(np.resize(frame,(h,w)))
-        img_q.put(img)
+        img_q.put(img.tobytes())
         now = time.time()
         #print(f'new image = {now}')
         # wake up at top of the current second
@@ -39,7 +41,9 @@ if  __name__ == "__main__":
 
     def image_update_fig(n,img_q,im):
         if img_q.empty() == False:
-            im_data = img_q.get()
+            tmp = np.frombuffer(img_q.get(),dtype=np.uint8)
+            im_data = np.reshape(tmp, newshape=(64,64))
+            #im_data = np.reshape(np.frombuffer(img_q.get()),newshape=(64,64))
             im.set_array(im_data)
         return im
 
