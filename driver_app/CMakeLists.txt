@@ -1,6 +1,7 @@
 Add_executable(ifx_driver ifx_driver.c ifx_app.c)
 
-target_link_libraries( ifx_driver ComLib_C_Interface wsock32 Ws2_32)
+#target_link_libraries( ifx_driver ComLib_C_Interface wsock32 Ws2_32)
+target_link_libraries( ifx_driver ComLib_C_Interface )
 
 target_include_directories( ifx_driver PUBLIC ${PROJECT_SOURCE_DIR}/ComLib_C_Interface/include)
 

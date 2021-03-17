@@ -1,29 +1,39 @@
 
-
 #include <stdio.h>
 #include <string.h>
 #include "Protocol.h"
 #include "COMPort.h"
 #include "EndpointRadarBase.h"
 #include "EndpointRadarDoppler.h"
-#include "EndpointRadarADCXMC.h"
+#include "EndpointRadarAdcxmc.h"
+#include "EndpointRadarIndustrial.h"
 
 #ifdef WIN32
 #include <winsock.h>
 #else
 #include <sys/socket.h>
+#include <sys/time.h>
 #endif
 extern int setupServerSocket();
 extern int acceptSocket();
 
-#define AUTOMATIC_DATA_TRIGER_TIME_US (500000)	// set to 0 to disable automatic trigger mode, defines when the next data is available
+#define AUTOMATIC_DATA_TRIGER_TIME_US (300000)	// set to 0 to disable automatic trigger mode, defines when the next data is available
 /*
  * Doppler Config Callback
  */
 void doppler_config_callback(void *context, int32_t protocol_handle, uint8_t endpoint, const Doppler_Configuration_t* doppler_config)
 {
-	fprintf(stderr, "\tfrequency_kHz: %d\n", doppler_config->frequency_kHz );
-	fprintf(stderr, "\ttx_power: %d\n", doppler_config->tx_power );
+	static int config_tried = 0;
+	if( config_tried == 0 ){
+		config_tried = 1;
+		Doppler_Configuration_t config = *doppler_config;
+		config.tx_power = 7;
+		int32_t res = ep_radar_doppler_set_doppler_configuration( protocol_handle, endpoint, &config);
+	    fprintf(stderr,"set doppler config: %s\n", protocol_get_status_code_description(protocol_handle, res ));
+	} else {
+		fprintf(stderr, "\tfrequency_kHz: %d\n", doppler_config->frequency_kHz );
+		fprintf(stderr, "\ttx_power: %d\n", doppler_config->tx_power );
+	}
 }
 
 /*
@@ -38,6 +48,8 @@ void device_info_callback(void *context, int32_t protocol_handle, uint8_t endpoi
 	} else {
 	      fprintf(stderr, "\tdata_format: DATA_REAL\n");  // Only I or Q  -- this is an error condition
 	} 
+	fprintf(stderr, "\tmax_tx_power: %d\n", device_info->max_tx_power );
+  
 }
 
 /*
@@ -57,7 +69,7 @@ void frame_format_callback(void *context, int32_t protocol_handle, uint8_t endpo
  * ADC Configuration Callback
  */
 
-#define ADC_SAMPLE_RATE 4000
+#define ADC_SAMPLE_RATE 1024
 #define ADC_RESOLUTION 12
 
 void adc_config_callback( void* context, int32_t protocol_handle, uint8_t endpoint, 
@@ -65,11 +77,11 @@ void adc_config_callback( void* context, int32_t protocol_handle, uint8_t endpoi
 {
 	static int config_tried = 0;
 	if( config_tried == 0 ){
-		config_tried = 1;
-		Adc_Xmc_Configuration_t config = *adc_configuration;
-		config.samplerate_Hz = ADC_SAMPLE_RATE;
-		config.resolution = ADC_RESOLUTION;
-		int32_t res = ep_radar_adcxmc_set_adc_configuration( protocol_handle, endpoint, &config);
+	    config_tried = 1;
+	    Adc_Xmc_Configuration_t config = *adc_configuration;
+	    config.samplerate_Hz = ADC_SAMPLE_RATE;
+	    config.resolution = ADC_RESOLUTION;
+	    int32_t res = ep_radar_adcxmc_set_adc_configuration( protocol_handle, endpoint, &config);
 	    fprintf(stderr,"set ADC config: %s\n", protocol_get_status_code_description(protocol_handle, res ));
 
 	} else {
@@ -85,7 +97,16 @@ void adc_config_callback( void* context, int32_t protocol_handle, uint8_t endpoi
 
 void chirp_duration_callback(void* context, int32_t protocol_handle, uint8_t endpoint, uint32_t chirp_duration_ns)
 {
-	fprintf(stderr, "\tchirp_duration_ns: %d\n",chirp_duration_ns );
+    fprintf(stderr, "\tchirp_duration_ns: %d\n",chirp_duration_ns );
+}
+
+/*
+ * LNA status
+ */
+
+void lna_status_callback(void* context, int32_t protocol_handle, uint8_t endpoint, uint8_t is_enabled)
+{
+    fprintf(stderr, "\tlna_enabled: %d\n", is_enabled );
 }
 
 int radar_auto_connect(void)
@@ -133,6 +154,23 @@ uint8_t padding[PADDING_LEN] = {0xDE,0xAD,0xBE,0xEF};
 int sock = -1;
 int seqno = 1;
 
+int first = 1;
+struct timeval start_time, end_time;
+int getElapsedTime()
+{
+    if( first ){
+		first = 0;
+		gettimeofday(&start_time, NULL);
+		return 0;
+	}
+	gettimeofday(&end_time, NULL);
+	int32_t seconds = end_time.tv_sec - start_time.tv_sec; //seconds
+    int32_t useconds = end_time.tv_usec - start_time.tv_usec; //milliseconds
+    int32_t milli_time = ((seconds) * 1000 + useconds/1000.0);
+	start_time = end_time;
+	return milli_time;
+}
+
 // called every time ep_radar_base_get_frame_data method is called to return measured time domain signals
 void received_frame_data(void* context,
 						int32_t protocol_handle,
@@ -166,7 +204,8 @@ void received_frame_data(void* context,
 			return;
 		}
 	}
-    fprintf(stderr, "sent %d, %d [%f,%f] ... [%f,%f]\n", seqno++, count, I_data[0], Q_data[0], I_data[count-1],Q_data[count-1]);
+	int elapsed = getElapsedTime();
+    fprintf(stderr, "sent %d(%d), %d [%f,%f] ... [%f,%f]\n",seqno++, elapsed, count, I_data[0], Q_data[0], I_data[count-1],Q_data[count-1]);
 }
 
 int main(int argc, char const *argv[]) 
@@ -176,6 +215,7 @@ int main(int argc, char const *argv[])
 	int endpointRadarBase = -1;
 	int endpointRadarDoppler = -1;
 	int endpointRadarADC = -1;
+	int endpointRadarIndustrial = -1;
 
 	
 
@@ -202,6 +242,9 @@ int main(int argc, char const *argv[])
 			}
 			if (ep_radar_adcxmc_is_compatible_endpoint(protocolHandle, i) == 0) {
 				endpointRadarADC = i;
+			}
+			if (ep_radar_industrial_is_compatible_endpoint(protocolHandle, i) == 0) {
+				endpointRadarIndustrial = i;
 			}
 		}
 	}
@@ -235,6 +278,13 @@ int main(int argc, char const *argv[])
 	res = ep_radar_adcxmc_get_adc_configuration(protocolHandle, endpointRadarADC); 
 	fprintf(stderr,"get ADC: %s\n", protocol_get_status_code_description(protocolHandle, res ));
 
+    ep_radar_adcxmc_set_callback_adc_configuration(adc_config_callback, NULL);
+	res = ep_radar_adcxmc_get_adc_configuration(protocolHandle, endpointRadarADC); 
+	fprintf(stderr,"get ADC: %s\n", protocol_get_status_code_description(protocolHandle, res ));
+
+    ep_radar_industrial_set_callback_bgt_lna_status(lna_status_callback, NULL);
+    res = ep_radar_industrial_bgt_lna_is_enable( protocolHandle, endpointRadarIndustrial);
+	fprintf(stderr,"get LNA: %s\n", protocol_get_status_code_description(protocolHandle, res ));
 
 	// set automatic trigger
 	res = ep_radar_base_set_automatic_frame_trigger(protocolHandle,
