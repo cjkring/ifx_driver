@@ -36,6 +36,7 @@ from avro_export import avroImport, avroExport
 from config import read_config, validate_config
 from queue import Queue
 from image import image_thread
+from app_logging import app_logging
 numpoints = 256
 video_frames = 50
 anim = None
@@ -297,6 +298,7 @@ if  __name__ == "__main__":
 
     config = read_config()
     validate_config(config)
+    app_logging(config,logging.DEBUG)
     addToAnnotations(config['app']['annotations'])
     readings = rd_store.Readings()
 

@@ -1,12 +1,17 @@
 import yaml
+import logging
+from app_logging import test_logging
+
+logger = logging.getLogger("ifxgui.config")
 
 def read_config():
     try:
         with open("config.yml", "r") as ymlfile:
             cfg = yaml.safe_load(ymlfile)
+            logger.info(f'Read_config: success')
             return cfg
     except Exception as e:
-        print(f'Read_config: {e}')
+        logger.warn(f'Read_config: {e}')
         return {}
 
 def validate_config(config):
@@ -23,9 +28,12 @@ def validate_config(config):
         if key not in aws_config:
             print(f'config validation: {key} does not exist in aws config')
             retval = False
+    logger.info("Config validated")
     return retval
     
 if  __name__ == "__main__":
+
+    test_logging()
 
     config = read_config()
     validate_config(config)
